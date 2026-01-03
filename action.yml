@@ -1,4 +1,4 @@
-name: 'release-py'
+name: 'release-py-action'
 description: 'Automated releases for Python projects - handles versioning, changelogs, and publishing'
 author: 'Mikko Leppanen'
 
