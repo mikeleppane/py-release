@@ -17,6 +17,7 @@ from release_py.config.loader import (
 from release_py.config.models import (
     BranchConfig,
     ChangelogConfig,
+    CommitParser,
     CommitsConfig,
     GitHubConfig,
     HooksConfig,
@@ -502,3 +503,127 @@ class TestGetProjectInfo:
 
         with pytest.raises(ConfigValidationError):
             get_project_version(tmp_path)
+
+
+class TestCommitParser:
+    """Tests for CommitParser model (custom commit parsing)."""
+
+    def test_basic_parser(self):
+        """Create a basic commit parser."""
+        parser = CommitParser(
+            pattern=r"^:sparkles:\s*(?P<description>.+)$",
+            type="feat",
+            group="Features",
+        )
+
+        assert parser.pattern == r"^:sparkles:\s*(?P<description>.+)$"
+        assert parser.type == "feat"
+        assert parser.group == "Features"
+        assert parser.description_group == "description"
+        assert parser.scope_group is None
+        assert parser.breaking_indicator is None
+
+    def test_parser_with_scope(self):
+        """Create a parser with scope extraction."""
+        parser = CommitParser(
+            pattern=r"^\[(?P<scope>\w+)\]\s*(?P<desc>.+)$",
+            type="change",
+            group="Changes",
+            scope_group="scope",
+            description_group="desc",
+        )
+
+        assert parser.scope_group == "scope"
+        assert parser.description_group == "desc"
+
+    def test_breaking_change_parser(self):
+        """Create a parser for breaking changes."""
+        parser = CommitParser(
+            pattern=r"^:boom:\s*(?P<description>.+)$",
+            type="breaking",
+            group="Breaking Changes",
+            breaking_indicator=":boom:",
+        )
+
+        assert parser.breaking_indicator == ":boom:"
+
+    def test_gitmoji_parsers(self):
+        """Test Gitmoji-style parser configuration."""
+        parsers = [
+            CommitParser(
+                pattern=r"^:sparkles:\s*(?P<description>.+)$",
+                type="feat",
+                group="✨ Features",
+            ),
+            CommitParser(
+                pattern=r"^:bug:\s*(?P<description>.+)$",
+                type="fix",
+                group="🐛 Bug Fixes",
+            ),
+            CommitParser(
+                pattern=r"^:boom:\s*(?P<description>.+)$",
+                type="breaking",
+                group="💥 Breaking Changes",
+                breaking_indicator=":boom:",
+            ),
+        ]
+
+        assert len(parsers) == 3
+        assert parsers[0].type == "feat"
+        assert parsers[1].type == "fix"
+        assert parsers[2].breaking_indicator == ":boom:"
+
+
+class TestCommitsConfigCustomParsers:
+    """Tests for CommitsConfig with custom parsers."""
+
+    def test_default_no_custom_parsers(self):
+        """Default config has no custom parsers."""
+        config = CommitsConfig()
+
+        assert config.commit_parsers == []
+        assert config.use_conventional_fallback is True
+
+    def test_custom_parsers_config(self):
+        """Custom parsers can be configured."""
+        config = CommitsConfig(
+            commit_parsers=[
+                CommitParser(
+                    pattern=r"^:sparkles:\s*(?P<description>.+)$",
+                    type="feat",
+                    group="Features",
+                ),
+            ],
+            use_conventional_fallback=False,
+        )
+
+        assert len(config.commit_parsers) == 1
+        assert config.use_conventional_fallback is False
+
+
+class TestChangelogConfigNativeFallback:
+    """Tests for ChangelogConfig native fallback and cliff config generation."""
+
+    def test_default_native_fallback(self):
+        """Default config has native fallback enabled."""
+        config = ChangelogConfig()
+
+        assert config.native_fallback is True
+        assert config.generate_cliff_config is False
+        assert config.cliff_body_template is None
+
+    def test_cliff_config_generation(self):
+        """Configure git-cliff config generation."""
+        config = ChangelogConfig(
+            generate_cliff_config=True,
+            cliff_body_template="{% for commit in commits %}{{ commit.message }}{% endfor %}",
+        )
+
+        assert config.generate_cliff_config is True
+        assert "{% for commit" in config.cliff_body_template
+
+    def test_disable_native_fallback(self):
+        """Native fallback can be disabled."""
+        config = ChangelogConfig(native_fallback=False)
+
+        assert config.native_fallback is False

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="images/logo.png" alt="py-release logo" width="200">
+</p>
+
 <h1 align="center">py-release</h1>
 
 <p align="center">
@@ -278,6 +282,48 @@ Available template variables:
 - `{author}` - Author name
 - `{hash}` - Short commit hash
 - `{body}` - Full commit body
+- `{type}` - Commit type (feat, fix, etc.)
+
+### Custom Commit Parsers
+
+Support non-conventional commit formats like Gitmoji, Angular, or your own custom patterns. Custom parsers are tried first, with conventional commits as a fallback.
+
+```toml
+[tool.py-release.commits]
+# Custom parsers for Gitmoji commits
+commit_parsers = [
+    { pattern = "^:sparkles:\\s*(?P<description>.+)$", type = "feat", group = "✨ Features" },
+    { pattern = "^:bug:\\s*(?P<description>.+)$", type = "fix", group = "🐛 Bug Fixes" },
+    { pattern = "^:boom:\\s*(?P<description>.+)$", type = "breaking", group = "💥 Breaking Changes", breaking_indicator = ":boom:" },
+    { pattern = "^:recycle:\\s*(?P<description>.+)$", type = "refactor", group = "♻️ Refactoring" },
+    { pattern = "^:memo:\\s*(?P<description>.+)$", type = "docs", group = "📚 Documentation" },
+]
+
+# Fall back to conventional commits if no custom parser matches (default: true)
+use_conventional_fallback = true
+```
+
+Each parser supports:
+
+- `pattern` - Regex with named capture groups (must include `description` group)
+- `type` - Commit type for version bumping (e.g., "feat", "fix")
+- `group` - Changelog section header
+- `scope_group` - Optional: name of regex group containing scope
+- `description_group` - Group name for description (default: "description")
+- `breaking_indicator` - If set, marks commits as breaking changes
+
+### Native Changelog Fallback
+
+py-release can generate changelogs natively when git-cliff is not installed. This uses your `section_headers` and `commit_template` settings.
+
+```toml
+[tool.py-release.changelog]
+# Generate changelog natively if git-cliff unavailable (default: true)
+native_fallback = true
+
+# Auto-generate git-cliff config from py-release settings
+generate_cliff_config = false
+```
 
 ### Build Command Hook
 
@@ -381,6 +427,8 @@ types_minor = ["feat"]           # Commit types triggering minor bump
 types_patch = ["fix", "perf"]    # Commit types triggering patch bump
 breaking_pattern = "BREAKING[ -]CHANGE:"
 skip_release_patterns = ["[skip release]", "[release skip]"]
+commit_parsers = []              # Custom parsers for non-conventional commits
+use_conventional_fallback = true # Fall back to conventional if no parser matches
 
 [tool.py-release.changelog]
 enabled = true
@@ -389,6 +437,8 @@ use_github_prs = false           # Use PR-based changelog (for squash merges)
 show_authors = false             # Include author in changelog entries
 show_commit_hash = false         # Include commit hash in changelog entries
 commit_template = ""             # Custom template: "{description} by @{author}"
+native_fallback = true           # Generate natively if git-cliff unavailable
+generate_cliff_config = false    # Auto-generate git-cliff config
 
 [tool.py-release.changelog.section_headers]
 feat = "✨ Features"
@@ -453,5 +503,5 @@ MIT License - see [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <sub>Built with <a href="https://github.com/astral-sh/uv">uv</a> and <a href="https://github.com/astral-sh/ruff">ruff</a></sub>
+  <a href="https://github.com/mikeleppane/release-py/issues">Report Bug</a> · <a href="https://github.com/mikeleppane/release-py/issues">Request Feature</a> · <a href="https://github.com/mikeleppane/release-py/discussions">Discussions</a>
 </p>

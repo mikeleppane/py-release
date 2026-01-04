@@ -18,10 +18,16 @@ Examples:
     refactor(core): simplify version parsing
 
     BREAKING CHANGE: Config file format has changed.
+
+Custom Parser Support:
+    Non-conventional commit formats (Gitmoji, Angular, etc.) can be parsed
+    using custom CommitParser configurations. Custom parsers are tried first,
+    then conventional commit parsing is used as a fallback (if enabled).
 """
 
 from __future__ import annotations
 
+import contextlib
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -29,7 +35,7 @@ from typing import TYPE_CHECKING
 from release_py.core.version import BumpType
 
 if TYPE_CHECKING:
-    from release_py.config.models import CommitsConfig
+    from release_py.config.models import CommitParser, CommitsConfig
     from release_py.vcs.git import Commit
 
 
@@ -59,6 +65,7 @@ class ParsedCommit:
         description: The commit description
         is_breaking: Whether this is a breaking change
         is_conventional: Whether the commit follows conventional format
+        changelog_group: Custom changelog group name (from CommitParser.group)
     """
 
     commit: Commit
@@ -67,14 +74,26 @@ class ParsedCommit:
     description: str
     is_breaking: bool
     is_conventional: bool
+    changelog_group: str | None = None
 
     @classmethod
-    def from_commit(cls, commit: Commit, breaking_pattern: str) -> ParsedCommit:
+    def from_commit(
+        cls,
+        commit: Commit,
+        breaking_pattern: str,
+        custom_parsers: list[CommitParser] | None = None,
+        use_conventional_fallback: bool = True,
+    ) -> ParsedCommit:
         """Parse a git commit into a ParsedCommit.
+
+        Custom parsers are tried first (in order). If none match and
+        use_conventional_fallback is True, conventional commit parsing is used.
 
         Args:
             commit: The git commit to parse
             breaking_pattern: Regex pattern to detect breaking changes in body
+            custom_parsers: List of custom parsers to try first
+            use_conventional_fallback: Fall back to conventional commit parsing
 
         Returns:
             ParsedCommit instance
@@ -82,40 +101,134 @@ class ParsedCommit:
         subject = commit.subject
         body = commit.body
 
-        # Try to match conventional commit format
-        match = _CONVENTIONAL_COMMIT_PATTERN.match(subject)
+        # Try custom parsers first
+        if custom_parsers:
+            for parser in custom_parsers:
+                result = _try_custom_parser(commit, parser, breaking_pattern)
+                if result is not None:
+                    return result
 
-        if not match:
-            # Not a conventional commit
-            return cls(
-                commit=commit,
-                commit_type=None,
-                scope=None,
-                description=subject,
-                is_breaking=False,
-                is_conventional=False,
-            )
+        # Fall back to conventional commit parsing if enabled
+        if use_conventional_fallback:
+            return _parse_conventional_commit(commit, subject, body, breaking_pattern)
 
-        commit_type = match.group("type").lower()
-        scope = match.group("scope")
-        description = match.group("description")
-        breaking_indicator = bool(match.group("breaking"))
-
-        # Check for breaking change in body
-        breaking_in_body = False
-        if body and breaking_pattern:
-            breaking_in_body = bool(re.search(breaking_pattern, body, re.IGNORECASE))
-
-        is_breaking = breaking_indicator or breaking_in_body
-
+        # No parser matched and no fallback - treat as non-conventional
         return cls(
             commit=commit,
-            commit_type=commit_type,
+            commit_type=None,
+            scope=None,
+            description=subject,
+            is_breaking=False,
+            is_conventional=False,
+        )
+
+
+def _try_custom_parser(
+    commit: Commit,
+    parser: CommitParser,
+    breaking_pattern: str,
+) -> ParsedCommit | None:
+    """Try to parse a commit using a custom parser.
+
+    Args:
+        commit: The git commit to parse
+        parser: The custom parser configuration
+        breaking_pattern: Regex pattern to detect breaking changes in body
+
+    Returns:
+        ParsedCommit if the parser matches, None otherwise
+    """
+    try:
+        pattern = re.compile(parser.pattern, re.MULTILINE)
+        match = pattern.match(commit.subject)
+
+        if not match:
+            return None
+
+        # Extract description from the configured group
+        try:
+            description = match.group(parser.description_group)
+        except IndexError:
+            # Description group doesn't exist, use full subject
+            description = commit.subject
+
+        # Extract scope if configured
+        scope = None
+        if parser.scope_group:
+            with contextlib.suppress(IndexError):
+                scope = match.group(parser.scope_group)
+
+        # Determine if this is a breaking change
+        is_breaking = parser.breaking_indicator is not None
+
+        # Also check for breaking change in body
+        if not is_breaking and commit.body and breaking_pattern:
+            is_breaking = bool(re.search(breaking_pattern, commit.body, re.IGNORECASE))
+
+        return ParsedCommit(
+            commit=commit,
+            commit_type=parser.type,
             scope=scope,
             description=description,
             is_breaking=is_breaking,
-            is_conventional=True,
+            is_conventional=True,  # Treated as valid for changelog purposes
+            changelog_group=parser.group,
         )
+    except re.error:
+        # Invalid regex pattern, skip this parser
+        return None
+
+
+def _parse_conventional_commit(
+    commit: Commit,
+    subject: str,
+    body: str | None,
+    breaking_pattern: str,
+) -> ParsedCommit:
+    """Parse a commit using conventional commit format.
+
+    Args:
+        commit: The git commit
+        subject: The commit subject line
+        body: The commit body (optional)
+        breaking_pattern: Regex pattern to detect breaking changes in body
+
+    Returns:
+        ParsedCommit instance
+    """
+    match = _CONVENTIONAL_COMMIT_PATTERN.match(subject)
+
+    if not match:
+        # Not a conventional commit
+        return ParsedCommit(
+            commit=commit,
+            commit_type=None,
+            scope=None,
+            description=subject,
+            is_breaking=False,
+            is_conventional=False,
+        )
+
+    commit_type = match.group("type").lower()
+    scope = match.group("scope")
+    description = match.group("description")
+    breaking_indicator = bool(match.group("breaking"))
+
+    # Check for breaking change in body
+    breaking_in_body = False
+    if body and breaking_pattern:
+        breaking_in_body = bool(re.search(breaking_pattern, body, re.IGNORECASE))
+
+    is_breaking = breaking_indicator or breaking_in_body
+
+    return ParsedCommit(
+        commit=commit,
+        commit_type=commit_type,
+        scope=scope,
+        description=description,
+        is_breaking=is_breaking,
+        is_conventional=True,
+    )
 
 
 def filter_skip_release_commits(
@@ -151,6 +264,10 @@ def parse_commits(
 ) -> list[ParsedCommit]:
     """Parse a list of commits into ParsedCommits.
 
+    Custom parsers from config are tried first. If none match and
+    use_conventional_fallback is enabled (default), conventional
+    commit parsing is used.
+
     Args:
         commits: List of git commits to parse
         config: Commit parsing configuration
@@ -159,8 +276,17 @@ def parse_commits(
         List of ParsedCommit instances
     """
     parsed = []
+
+    # Get custom parsers if configured
+    custom_parsers = config.commit_parsers if config.commit_parsers else None
+
     for commit in commits:
-        pc = ParsedCommit.from_commit(commit, config.breaking_pattern)
+        pc = ParsedCommit.from_commit(
+            commit,
+            config.breaking_pattern,
+            custom_parsers=custom_parsers,
+            use_conventional_fallback=config.use_conventional_fallback,
+        )
 
         # If scope filtering is enabled, skip non-matching commits
         if config.scope_regex and pc.scope and not re.match(config.scope_regex, pc.scope):

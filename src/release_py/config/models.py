@@ -43,10 +43,64 @@ class BranchConfig(BaseModel):
         return bool(re.fullmatch(pattern, branch_name))
 
 
+class CommitParser(BaseModel):
+    """Configuration for a custom commit parser.
+
+    Allows parsing non-conventional commit formats like Gitmoji, Angular, or custom patterns.
+    Each parser defines a regex pattern with named groups to extract commit information.
+
+    Example - Gitmoji support:
+        CommitParser(
+            pattern=r"^:sparkles:\\s*(?P<description>.+)$",
+            type="feat",
+            group="Features",
+        )
+
+    Example - Custom pattern with scope:
+        CommitParser(
+            pattern=r"^\\[(?P<scope>\\w+)\\]\\s*(?P<description>.+)$",
+            type="change",
+            group="Changes",
+            scope_group="scope",
+        )
+    """
+
+    pattern: str = Field(
+        description=(
+            "Regex pattern with named capture groups. "
+            "Must include a group for the description (default: 'description')."
+        ),
+    )
+    type: str = Field(
+        description="Commit type to assign (e.g., 'feat', 'fix', 'breaking')",
+    )
+    group: str = Field(
+        description="Changelog section name for this commit type (e.g., 'Features', 'Bug Fixes')",
+    )
+    scope_group: str | None = Field(
+        default=None,
+        description="Name of the regex group containing the scope (if any)",
+    )
+    description_group: str = Field(
+        default="description",
+        description="Name of the regex group containing the commit description",
+    )
+    breaking_indicator: str | None = Field(
+        default=None,
+        description=(
+            "If set, commits matching this parser are treated as breaking changes. "
+            "The value is the indicator that triggers this (e.g., ':boom:', '!')."
+        ),
+    )
+
+    model_config = {"extra": "forbid"}
+
+
 class CommitsConfig(BaseModel):
     """Configuration for conventional commit parsing.
 
     Determines how commits map to version bump types.
+    Supports both conventional commits and custom parsers for other formats.
     """
 
     types_major: list[str] = Field(
@@ -73,12 +127,30 @@ class CommitsConfig(BaseModel):
         default_factory=lambda: ["[skip release]", "[release skip]", "[no release]"],
         description="Patterns in commit messages that skip release (case-insensitive)",
     )
+    commit_parsers: list[CommitParser] = Field(
+        default_factory=list,
+        description=(
+            "Custom commit parsers for non-conventional formats (e.g., Gitmoji, Angular). "
+            "Parsers are tried in order before falling back to conventional commits."
+        ),
+    )
+    use_conventional_fallback: bool = Field(
+        default=True,
+        description=(
+            "Fall back to conventional commit parsing if no custom parser matches. "
+            "Set to False to only use custom parsers."
+        ),
+    )
 
     model_config = {"extra": "forbid"}
 
 
 class ChangelogConfig(BaseModel):
-    """Configuration for changelog generation via git-cliff."""
+    """Configuration for changelog generation.
+
+    Supports git-cliff for advanced changelog generation, with a native fallback
+    when git-cliff is not available or when `native_fallback` is enabled.
+    """
 
     enabled: bool = Field(
         default=True,
@@ -120,7 +192,7 @@ class ChangelogConfig(BaseModel):
         ],
         description="Authors to exclude from changelog (bots)",
     )
-    # Custom template settings for fallback changelog (when git-cliff is not available)
+    # Custom template settings for fallback/native changelog
     section_headers: dict[str, str] = Field(
         default_factory=lambda: {
             "breaking": "⚠️ Breaking Changes",
@@ -150,7 +222,28 @@ class ChangelogConfig(BaseModel):
         default=None,
         description=(
             "Custom template for each commit entry. "
-            "Available variables: {scope}, {description}, {author}, {hash}, {body}"
+            "Available variables: {scope}, {description}, {author}, {hash}, {body}, {type}"
+        ),
+    )
+    native_fallback: bool = Field(
+        default=True,
+        description=(
+            "Generate changelog natively if git-cliff is not available. "
+            "Uses section_headers and commit_template settings."
+        ),
+    )
+    generate_cliff_config: bool = Field(
+        default=False,
+        description=(
+            "Auto-generate git-cliff config from py-release settings. "
+            "Maps section_headers and commit_parsers to cliff.toml format."
+        ),
+    )
+    cliff_body_template: str | None = Field(
+        default=None,
+        description=(
+            "Custom body template for auto-generated git-cliff config. "
+            "Uses git-cliff's Tera template syntax."
         ),
     )
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from release_py.config.models import CommitsConfig
+from release_py.config.models import CommitParser, CommitsConfig
 from release_py.core.commits import (
     DEFAULT_ALLOWED_TYPES,
     ParsedCommit,
@@ -494,3 +494,291 @@ class TestValidatePrTitlesBatch:
 
         assert not results[0].is_valid  # No scope
         assert results[1].is_valid  # Has scope
+
+
+# =============================================================================
+# Custom Parser Tests
+# =============================================================================
+
+
+class TestCustomParsers:
+    """Tests for custom commit parser support."""
+
+    def test_gitmoji_sparkles_feat(self):
+        """Parse Gitmoji :sparkles: as feat."""
+        parser = CommitParser(
+            pattern=r"^:sparkles:\s*(?P<description>.+)$",
+            type="feat",
+            group="✨ Features",
+        )
+        commit = Commit(
+            sha="abc123",
+            message=":sparkles: add new feature",
+            author_name="Test",
+            author_email="test@test.com",
+            date=datetime.now(),
+        )
+        pc = ParsedCommit.from_commit(
+            commit,
+            breaking_pattern=r"BREAKING[ -]CHANGE:",
+            custom_parsers=[parser],
+        )
+
+        assert pc.is_conventional
+        assert pc.commit_type == "feat"
+        assert pc.description == "add new feature"
+        assert pc.changelog_group == "✨ Features"
+        assert not pc.is_breaking
+
+    def test_gitmoji_bug_fix(self):
+        """Parse Gitmoji :bug: as fix."""
+        parser = CommitParser(
+            pattern=r"^:bug:\s*(?P<description>.+)$",
+            type="fix",
+            group="🐛 Bug Fixes",
+        )
+        commit = Commit(
+            sha="abc123",
+            message=":bug: fix authentication issue",
+            author_name="Test",
+            author_email="test@test.com",
+            date=datetime.now(),
+        )
+        pc = ParsedCommit.from_commit(
+            commit,
+            breaking_pattern=r"BREAKING[ -]CHANGE:",
+            custom_parsers=[parser],
+        )
+
+        assert pc.commit_type == "fix"
+        assert pc.description == "fix authentication issue"
+        assert pc.changelog_group == "🐛 Bug Fixes"
+
+    def test_gitmoji_boom_breaking(self):
+        """Parse Gitmoji :boom: as breaking change."""
+        parser = CommitParser(
+            pattern=r"^:boom:\s*(?P<description>.+)$",
+            type="breaking",
+            group="💥 Breaking Changes",
+            breaking_indicator=":boom:",
+        )
+        commit = Commit(
+            sha="abc123",
+            message=":boom: redesign API",
+            author_name="Test",
+            author_email="test@test.com",
+            date=datetime.now(),
+        )
+        pc = ParsedCommit.from_commit(
+            commit,
+            breaking_pattern=r"BREAKING[ -]CHANGE:",
+            custom_parsers=[parser],
+        )
+
+        assert pc.commit_type == "breaking"
+        assert pc.is_breaking
+        assert pc.changelog_group == "💥 Breaking Changes"
+
+    def test_custom_parser_with_scope(self):
+        """Parse commit with custom scope extraction."""
+        parser = CommitParser(
+            pattern=r"^\[(?P<scope>\w+)\]\s*(?P<description>.+)$",
+            type="change",
+            group="Changes",
+            scope_group="scope",
+        )
+        commit = Commit(
+            sha="abc123",
+            message="[api] update authentication",
+            author_name="Test",
+            author_email="test@test.com",
+            date=datetime.now(),
+        )
+        pc = ParsedCommit.from_commit(
+            commit,
+            breaking_pattern=r"BREAKING[ -]CHANGE:",
+            custom_parsers=[parser],
+        )
+
+        assert pc.commit_type == "change"
+        assert pc.scope == "api"
+        assert pc.description == "update authentication"
+
+    def test_parser_order_matters(self):
+        """First matching parser wins."""
+        parsers = [
+            CommitParser(
+                pattern=r"^:sparkles:\s*(?P<description>.+)$",
+                type="feat",
+                group="Features",
+            ),
+            CommitParser(
+                pattern=r"^:.*:\s*(?P<description>.+)$",  # Catch-all for emoji
+                type="other",
+                group="Other",
+            ),
+        ]
+        commit = Commit(
+            sha="abc123",
+            message=":sparkles: add feature",
+            author_name="Test",
+            author_email="test@test.com",
+            date=datetime.now(),
+        )
+        pc = ParsedCommit.from_commit(
+            commit,
+            breaking_pattern=r"BREAKING[ -]CHANGE:",
+            custom_parsers=parsers,
+        )
+
+        # First parser should match
+        assert pc.commit_type == "feat"
+        assert pc.changelog_group == "Features"
+
+    def test_fallback_to_conventional(self):
+        """Fall back to conventional commits when no custom parser matches."""
+        parser = CommitParser(
+            pattern=r"^:sparkles:\s*(?P<description>.+)$",
+            type="feat",
+            group="Features",
+        )
+        commit = Commit(
+            sha="abc123",
+            message="fix(api): handle error",  # Conventional format
+            author_name="Test",
+            author_email="test@test.com",
+            date=datetime.now(),
+        )
+        pc = ParsedCommit.from_commit(
+            commit,
+            breaking_pattern=r"BREAKING[ -]CHANGE:",
+            custom_parsers=[parser],
+            use_conventional_fallback=True,
+        )
+
+        # Should fall back to conventional parsing
+        assert pc.commit_type == "fix"
+        assert pc.scope == "api"
+        assert pc.changelog_group is None  # No custom group from conventional
+
+    def test_no_fallback_unmatched(self):
+        """Without fallback, unmatched commits are non-conventional."""
+        parser = CommitParser(
+            pattern=r"^:sparkles:\s*(?P<description>.+)$",
+            type="feat",
+            group="Features",
+        )
+        commit = Commit(
+            sha="abc123",
+            message="fix(api): handle error",  # Conventional format
+            author_name="Test",
+            author_email="test@test.com",
+            date=datetime.now(),
+        )
+        pc = ParsedCommit.from_commit(
+            commit,
+            breaking_pattern=r"BREAKING[ -]CHANGE:",
+            custom_parsers=[parser],
+            use_conventional_fallback=False,
+        )
+
+        # Should not match and not be conventional
+        assert not pc.is_conventional
+        assert pc.commit_type is None
+
+    def test_parse_commits_with_custom_parsers(self):
+        """parse_commits() uses custom parsers from config."""
+        config = CommitsConfig(
+            commit_parsers=[
+                CommitParser(
+                    pattern=r"^:sparkles:\s*(?P<description>.+)$",
+                    type="feat",
+                    group="Features",
+                ),
+                CommitParser(
+                    pattern=r"^:bug:\s*(?P<description>.+)$",
+                    type="fix",
+                    group="Bug Fixes",
+                ),
+            ],
+        )
+        commits = [
+            Commit(
+                sha="abc123",
+                message=":sparkles: add feature",
+                author_name="Test",
+                author_email="test@test.com",
+                date=datetime.now(),
+            ),
+            Commit(
+                sha="def456",
+                message=":bug: fix bug",
+                author_name="Test",
+                author_email="test@test.com",
+                date=datetime.now(),
+            ),
+            Commit(
+                sha="ghi789",
+                message="fix: conventional fix",  # Should fall back
+                author_name="Test",
+                author_email="test@test.com",
+                date=datetime.now(),
+            ),
+        ]
+        parsed = parse_commits(commits, config)
+
+        assert len(parsed) == 3
+        assert parsed[0].commit_type == "feat"
+        assert parsed[0].changelog_group == "Features"
+        assert parsed[1].commit_type == "fix"
+        assert parsed[1].changelog_group == "Bug Fixes"
+        assert parsed[2].commit_type == "fix"
+        assert parsed[2].changelog_group is None  # Conventional fallback
+
+    def test_invalid_regex_pattern_skipped(self):
+        """Invalid regex patterns are gracefully skipped."""
+        parser = CommitParser(
+            pattern=r"^[invalid(regex$",  # Invalid regex
+            type="feat",
+            group="Features",
+        )
+        commit = Commit(
+            sha="abc123",
+            message="feat: add feature",
+            author_name="Test",
+            author_email="test@test.com",
+            date=datetime.now(),
+        )
+        # Should not crash, just skip the invalid parser and fall back
+        pc = ParsedCommit.from_commit(
+            commit,
+            breaking_pattern=r"BREAKING[ -]CHANGE:",
+            custom_parsers=[parser],
+        )
+
+        # Falls back to conventional
+        assert pc.commit_type == "feat"
+        assert pc.is_conventional
+
+    def test_breaking_in_body_with_custom_parser(self):
+        """Breaking change in body detected with custom parser."""
+        parser = CommitParser(
+            pattern=r"^:sparkles:\s*(?P<description>.+)$",
+            type="feat",
+            group="Features",
+        )
+        commit = Commit(
+            sha="abc123",
+            message=":sparkles: add feature\n\nBREAKING CHANGE: API changed",
+            author_name="Test",
+            author_email="test@test.com",
+            date=datetime.now(),
+        )
+        pc = ParsedCommit.from_commit(
+            commit,
+            breaking_pattern=r"BREAKING[ -]CHANGE:",
+            custom_parsers=[parser],
+        )
+
+        assert pc.commit_type == "feat"
+        assert pc.is_breaking  # Detected from body
