@@ -165,6 +165,7 @@ exclude_lines = [
 
 [tool.releasio]
 default_branch = "main"
+allow_dirty = true
 
 [tool.releasio.version]
 tag_prefix = "v"
