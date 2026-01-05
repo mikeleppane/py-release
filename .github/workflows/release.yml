@@ -29,10 +29,12 @@ permissions:
   id-token: write  # Required for PyPI trusted publishing
 
 jobs:
-  # Auto-create/update release PR on push to main
+  # Auto-create/update release PR on push to main (skip release commits)
   release-pr:
     name: Create Release PR
-    if: github.event_name == 'push'
+    if: |
+      github.event_name == 'push' &&
+      !startsWith(github.event.head_commit.message, 'chore(release):')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
