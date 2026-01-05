@@ -1,0 +1,137 @@
+/* releasio custom styles */
+
+:root {
+  /* Primary brand colors */
+  --md-primary-fg-color: #00897B;
+  --md-primary-fg-color--light: #4DB6AC;
+  --md-primary-fg-color--dark: #00695C;
+  --md-accent-fg-color: #FFB300;
+}
+
+/* Grid cards for features */
+.md-typeset .grid.cards > ul > li {
+  border-radius: 8px;
+  padding: 1.5rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Code block improvements */
+.md-typeset pre > code {
+  font-size: 0.85em;
+}
+
+/* Admonition improvements */
+.md-typeset .admonition.tip {
+  border-left-color: var(--md-accent-fg-color);
+}
+
+/* Center homepage buttons */
+.md-typeset p:has(.md-button) {
+  text-align: center;
+}
+
+/* Make mermaid diagrams centered */
+.md-typeset .mermaid {
+  text-align: center;
+}
+
+/* Fix Mermaid diagram text colors for readability */
+.mermaid svg text,
+.mermaid svg .nodeLabel,
+.mermaid svg .edgeLabel,
+.mermaid svg .label,
+.mermaid svg tspan,
+.mermaid svg foreignObject,
+.mermaid svg foreignObject div,
+.mermaid svg foreignObject span,
+.mermaid svg foreignObject p,
+.mermaid svg g text,
+.mermaid svg g.label text,
+.mermaid svg .labelText,
+.mermaid svg .messageText,
+.mermaid svg .loopText,
+.mermaid svg .noteText,
+.mermaid svg .actor,
+.mermaid svg .labelBox,
+.mermaid svg .cluster-label text {
+  fill: #212121 !important;
+  color: #212121 !important;
+  stroke: none !important;
+}
+
+/* Mermaid edge labels background */
+.mermaid svg .edgeLabel rect,
+.mermaid svg .labelBkg {
+  fill: #ffffff !important;
+  opacity: 0.9 !important;
+}
+
+/* Mermaid node fill for contrast */
+.mermaid svg .node rect,
+.mermaid svg .node circle,
+.mermaid svg .node ellipse,
+.mermaid svg .node polygon {
+  fill: #e0f2f1 !important;
+  stroke: #00897B !important;
+  stroke-width: 2px !important;
+}
+
+/* Mermaid edge/arrow styling */
+.mermaid svg .edgePath .path,
+.mermaid svg path.path {
+  stroke: #546e7a !important;
+  stroke-width: 2px !important;
+}
+
+/* Arrow markers */
+.mermaid svg marker path {
+  fill: #546e7a !important;
+}
+
+/* Dark mode Mermaid fixes */
+[data-md-color-scheme="slate"] .mermaid svg text,
+[data-md-color-scheme="slate"] .mermaid svg .nodeLabel,
+[data-md-color-scheme="slate"] .mermaid svg .edgeLabel,
+[data-md-color-scheme="slate"] .mermaid svg .label,
+[data-md-color-scheme="slate"] .mermaid svg tspan,
+[data-md-color-scheme="slate"] .mermaid svg foreignObject,
+[data-md-color-scheme="slate"] .mermaid svg foreignObject div,
+[data-md-color-scheme="slate"] .mermaid svg foreignObject span,
+[data-md-color-scheme="slate"] .mermaid svg g text {
+  fill: #e0e0e0 !important;
+  color: #e0e0e0 !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid svg .edgeLabel rect,
+[data-md-color-scheme="slate"] .mermaid svg .labelBkg {
+  fill: #37474f !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid svg .node rect,
+[data-md-color-scheme="slate"] .mermaid svg .node circle,
+[data-md-color-scheme="slate"] .mermaid svg .node polygon {
+  fill: #37474f !important;
+  stroke: #4DB6AC !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid svg .edgePath .path {
+  stroke: #90a4ae !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid svg marker path {
+  fill: #90a4ae !important;
+}
+
+/* Table styling */
+.md-typeset table:not([class]) {
+  font-size: 0.85rem;
+}
+
+.md-typeset table:not([class]) th {
+  white-space: nowrap;
+}

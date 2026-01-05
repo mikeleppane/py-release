@@ -38,3 +38,4 @@ coverage.json
 
 # Test scripts (temporary)
 e2e_test*.sh   
+site/

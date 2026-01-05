@@ -1,0 +1,244 @@
+site_name: releasio
+site_url: https://mikeleppane.github.io/releasio/
+site_description: "Best-in-class Python release automation, inspired by release-plz"
+site_author: Mikko Leppanen
+
+repo_name: mikeleppane/releasio
+repo_url: https://github.com/mikeleppane/releasio
+edit_uri: edit/main/docs/
+
+copyright: Copyright &copy; 2024-2025 Mikko Leppanen
+
+theme:
+  name: material
+  logo: assets/logo.png
+  favicon: assets/favicon.ico
+
+  features:
+    # Navigation
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+
+    # Search
+    - search.suggest
+    - search.highlight
+    - search.share
+
+    # Content
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.tooltips
+
+    # Table of contents
+    - toc.follow
+
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+  font:
+    text: Roboto
+    code: Roboto Mono
+
+  icon:
+    repo: fontawesome/brands/github
+    admonition:
+      note: octicons/tag-16
+      abstract: octicons/checklist-16
+      info: octicons/info-16
+      tip: octicons/squirrel-16
+      success: octicons/check-16
+      question: octicons/question-16
+      warning: octicons/alert-16
+      failure: octicons/x-circle-16
+      danger: octicons/zap-16
+      bug: octicons/bug-16
+      example: octicons/beaker-16
+      quote: octicons/quote-16
+
+plugins:
+  - search:
+      separator: '[\s\-\.]+'
+
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            heading_level: 2
+            members_order: source
+            docstring_style: google
+            docstring_section_style: spacy
+            show_signature_annotations: true
+            separate_signature: true
+            signature_crossrefs: true
+            merge_init_into_class: true
+            show_if_no_docstring: false
+
+  - gen-files:
+      scripts:
+        - docs/scripts/gen_ref_pages.py
+
+  - literate-nav:
+      nav_file: SUMMARY.md
+
+  - section-index
+
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: timeago
+      enable_git_follow: false
+
+markdown_extensions:
+  # Python Markdown
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+
+  # PyMdown Extensions
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      user: mikeleppane
+      repo: releasio
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      combine_header_slug: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/mikeleppane/releasio
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/releasio/
+  generator: false
+
+extra_javascript:
+  - javascripts/mermaid-config.js
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - getting-started/index.md
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+      - First Release: getting-started/first-release.md
+  - User Guide:
+      - user-guide/index.md
+      - CLI Commands:
+          - user-guide/cli/index.md
+          - check: user-guide/cli/check.md
+          - update: user-guide/cli/update.md
+          - release-pr: user-guide/cli/release-pr.md
+          - release: user-guide/cli/release.md
+          - do-release: user-guide/cli/do-release.md
+          - check-pr: user-guide/cli/check-pr.md
+          - init: user-guide/cli/init.md
+      - Configuration:
+          - user-guide/configuration/index.md
+          - Configuration Files: user-guide/configuration/files.md
+          - Full Reference: user-guide/configuration/reference.md
+          - Examples: user-guide/configuration/examples.md
+      - Version Management:
+          - user-guide/versioning/index.md
+          - Semantic Versioning: user-guide/versioning/semver.md
+          - Pre-releases: user-guide/versioning/pre-releases.md
+          - Version Files: user-guide/versioning/version-files.md
+      - Changelog Generation:
+          - user-guide/changelog/index.md
+          - Templates: user-guide/changelog/templates.md
+          - git-cliff Integration: user-guide/changelog/git-cliff.md
+      - Conventional Commits:
+          - user-guide/commits/index.md
+          - Format: user-guide/commits/format.md
+          - Custom Parsers: user-guide/commits/custom-parsers.md
+  - GitHub Integration:
+      - github/index.md
+      - GitHub Actions:
+          - github/actions/index.md
+          - Minimal Setup: github/actions/minimal.md
+          - Full Workflow: github/actions/full-workflow.md
+          - Action Reference: github/actions/reference.md
+      - Trusted Publishing: github/trusted-publishing.md
+      - Release Assets: github/release-assets.md
+  - Publishing:
+      - publishing/index.md
+      - PyPI Publishing: publishing/pypi.md
+      - Build Tools: publishing/build-tools.md
+  - Advanced:
+      - advanced/index.md
+      - Multi-branch Releases: advanced/multi-branch.md
+      - Release Hooks: advanced/hooks.md
+      - Monorepo Support: advanced/monorepo.md
+  - Architecture:
+      - architecture/index.md
+      - System Overview: architecture/overview.md
+      - Data Flow: architecture/data-flow.md
+  - API Reference: reference/
+  - Contributing:
+      - contributing/index.md
+      - Development Setup: contributing/setup.md
+  - Changelog: changelog.md
