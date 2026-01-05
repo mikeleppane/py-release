@@ -237,13 +237,17 @@ def run_update(
             github_repo = config.github.repo or repo_name
             github_repo_str = f"{github_owner}/{github_repo}"
         except Exception:
-            pass  # Not a GitHub repo or can't parse
+            console.print(
+                "  [dim][yellow]Note:[/] Could not detect GitHub repository. "
+                "Changelog will not include PR links.[/]"
+            )
 
         changelog_content = generate_changelog(
             repo=repo,
             version=next_version,
             config=config,
             github_repo=github_repo_str,
+            console=console,
         )
 
         # Write changelog

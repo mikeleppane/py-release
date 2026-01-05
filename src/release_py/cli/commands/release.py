@@ -138,6 +138,7 @@ def run_release(
                 custom_command=custom_build,
                 version=str(current_version),
                 tool=config.publish.tool,
+                console=console,
             )
             console.print("  [green]✓[/] Built package")
 
@@ -145,7 +146,7 @@ def run_release(
             console.print("  • Publishing to PyPI...")
             from release_py.publish.pypi import publish_package
 
-            publish_package(project_path, config.publish)
+            publish_package(project_path, config.publish, console=console)
             console.print("  [green]✓[/] Published to PyPI")
 
         # Step 4: Create GitHub release
@@ -199,6 +200,7 @@ def run_release(
                     current_version,
                     config,
                     github_repo=github_repo_str,
+                    console=console,
                 )
             except Exception as e:
                 console.print(

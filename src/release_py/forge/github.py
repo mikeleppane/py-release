@@ -17,6 +17,7 @@ import time
 from typing import Any
 
 import httpx
+from rich.console import Console  # Used at runtime for console.status()
 
 from release_py.exceptions import AuthenticationError, ForgeError, RateLimitError
 from release_py.forge.base import MergeRequest, MergeRequestState, Release
@@ -410,6 +411,8 @@ class GitHubClient:
         base_tag: str | None,
         head_tag: str | None = None,
         batch_size: int = 10,
+        *,
+        console: Console | None = None,
     ) -> list[dict[str, Any]]:
         """Get all merged PRs between two tags.
 
@@ -424,6 +427,7 @@ class GitHubClient:
             base_tag: Starting tag (exclusive). None = from beginning.
             head_tag: Ending tag (inclusive). None = up to HEAD.
             batch_size: Number of PRs to fetch in parallel (default: 10).
+            console: Rich console for progress indicators (optional)
 
         Returns:
             List of PR data dicts with keys:
@@ -463,13 +467,30 @@ class GitHubClient:
         sorted_pr_numbers = sorted(pr_numbers)
         prs: list[dict[str, Any]] = []
 
-        for i in range(0, len(sorted_pr_numbers), batch_size):
-            batch = sorted_pr_numbers[i : i + batch_size]
-            tasks = [self._get_pr_details(pr_number) for pr_number in batch]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Show progress if console provided
+        if console and sorted_pr_numbers:
+            pr_count = len(sorted_pr_numbers)
+            with console.status(
+                f"[bold blue]Fetching {pr_count} PR{'' if pr_count == 1 else 's'}...",
+                spinner="dots",
+            ):
+                for i in range(0, len(sorted_pr_numbers), batch_size):
+                    batch = sorted_pr_numbers[i : i + batch_size]
+                    tasks = [self._get_pr_details(pr_number) for pr_number in batch]
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # Filter valid results (ignore exceptions and None)
-            prs.extend(result for result in results if isinstance(result, dict) and result)
+                    # Filter valid results (ignore exceptions and None)
+                    prs.extend(
+                        result for result in results if isinstance(result, dict) and result
+                    )
+        else:
+            for i in range(0, len(sorted_pr_numbers), batch_size):
+                batch = sorted_pr_numbers[i : i + batch_size]
+                tasks = [self._get_pr_details(pr_number) for pr_number in batch]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                # Filter valid results (ignore exceptions and None)
+                prs.extend(result for result in results if isinstance(result, dict) and result)
 
         return prs
 

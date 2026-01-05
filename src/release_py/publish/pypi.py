@@ -13,6 +13,8 @@ import shutil
 import subprocess
 from typing import TYPE_CHECKING
 
+from rich.console import Console  # Used at runtime for console.status()
+
 from release_py.exceptions import BuildError, PublishError, UploadError
 
 if TYPE_CHECKING:
@@ -61,6 +63,7 @@ def build_package(
     custom_command: str | None = None,
     version: str | None = None,
     tool: str = "uv",
+    console: Console | None = None,
 ) -> list[Path]:
     """Build the package using configured tool or fallback chain.
 
@@ -70,6 +73,7 @@ def build_package(
         custom_command: Custom build command (supports {version}, {project_path} variables)
         version: Version being built (for template substitution)
         tool: Preferred build tool (from config.publish.tool)
+        console: Rich console for progress indicators (optional)
 
     Returns:
         List of paths to built distribution files
@@ -93,14 +97,25 @@ def build_package(
         expanded_cmd = custom_command.format(**template_vars)
 
         try:
-            subprocess.run(
-                expanded_cmd,
-                shell=True,
-                cwd=project_path,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
+            if console:
+                with console.status("[bold blue]Building package...", spinner="dots"):
+                    subprocess.run(
+                        expanded_cmd,
+                        shell=True,
+                        cwd=project_path,
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                    )
+            else:
+                subprocess.run(
+                    expanded_cmd,
+                    shell=True,
+                    cwd=project_path,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
         except subprocess.CalledProcessError as e:
             raise BuildError(f"Custom build command failed:\n{e.stderr}") from e
     else:
@@ -126,13 +141,25 @@ def build_package(
                         continue
 
                 try:
-                    subprocess.run(
-                        cmd,
-                        cwd=project_path,
-                        capture_output=True,
-                        text=True,
-                        check=True,
-                    )
+                    if console:
+                        with console.status(
+                            f"[bold blue]Building package with {tool_name}...", spinner="dots"
+                        ):
+                            subprocess.run(
+                                cmd,
+                                cwd=project_path,
+                                capture_output=True,
+                                text=True,
+                                check=True,
+                            )
+                    else:
+                        subprocess.run(
+                            cmd,
+                            cwd=project_path,
+                            capture_output=True,
+                            text=True,
+                            check=True,
+                        )
                     break
                 except subprocess.CalledProcessError as e:
                     raise BuildError(f"Build with {tool_name} failed:\n{e.stderr}") from e
@@ -159,6 +186,7 @@ def publish_package(
     config: PublishConfig,
     *,
     dist_files: list[Path] | None = None,
+    console: Console | None = None,
 ) -> None:
     """Publish the package to PyPI.
 
@@ -169,6 +197,7 @@ def publish_package(
         project_path: Path to the project directory
         config: Publishing configuration
         dist_files: Specific files to publish. If None, publishes all in dist/
+        console: Rich console for progress indicators (optional)
 
     Raises:
         PublishError: If publishing fails
@@ -186,16 +215,18 @@ def publish_package(
 
     # Use configured tool
     if config.tool == "uv":
-        _publish_with_uv(dist_files, config)
+        _publish_with_uv(dist_files, config, console=console)
     elif config.tool == "poetry":
-        _publish_with_poetry(dist_files, config)
+        _publish_with_poetry(dist_files, config, console=console)
     elif config.tool == "pdm":
-        _publish_with_pdm(dist_files, config)
+        _publish_with_pdm(dist_files, config, console=console)
     else:  # twine
-        _publish_with_twine(dist_files, config)
+        _publish_with_twine(dist_files, config, console=console)
 
 
-def _publish_with_uv(dist_files: list[Path], config: PublishConfig) -> None:
+def _publish_with_uv(
+    dist_files: list[Path], config: PublishConfig, *, console: Console | None = None
+) -> None:
     """Publish using uv publish."""
     if shutil.which("uv") is None:
         raise PublishError("uv not found. Install with: pip install uv")
@@ -210,19 +241,30 @@ def _publish_with_uv(dist_files: list[Path], config: PublishConfig) -> None:
     cmd.extend(str(f) for f in dist_files)
 
     try:
-        subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        if console:
+            with console.status("[bold blue]Publishing to PyPI...", spinner="dots"):
+                subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+        else:
+            subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
     except subprocess.CalledProcessError as e:
         if "already exists" in e.stderr.lower():
             raise UploadError("This version has already been published to PyPI") from e
         raise UploadError(f"uv publish failed:\n{e.stderr}") from e
 
 
-def _publish_with_twine(dist_files: list[Path], config: PublishConfig) -> None:
+def _publish_with_twine(
+    dist_files: list[Path], config: PublishConfig, *, console: Console | None = None
+) -> None:
     """Publish using twine."""
     if shutil.which("twine") is None:
         raise PublishError("twine not found. Install with: pip install twine")
@@ -238,19 +280,30 @@ def _publish_with_twine(dist_files: list[Path], config: PublishConfig) -> None:
     cmd.extend(str(f) for f in dist_files)
 
     try:
-        subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        if console:
+            with console.status("[bold blue]Publishing to PyPI...", spinner="dots"):
+                subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+        else:
+            subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
     except subprocess.CalledProcessError as e:
         if "already exists" in e.stderr.lower():
             raise UploadError("This version has already been published to PyPI") from e
         raise UploadError(f"twine upload failed:\n{e.stderr}") from e
 
 
-def _publish_with_poetry(dist_files: list[Path], config: PublishConfig) -> None:
+def _publish_with_poetry(
+    dist_files: list[Path], config: PublishConfig, *, console: Console | None = None
+) -> None:
     """Publish using poetry publish.
 
     Poetry publish supports:
@@ -261,6 +314,7 @@ def _publish_with_poetry(dist_files: list[Path], config: PublishConfig) -> None:
     Args:
         dist_files: Distribution files to publish
         config: Publishing configuration
+        console: Rich console for progress indicators (optional)
 
     Raises:
         PublishError: If poetry not found
@@ -282,13 +336,23 @@ def _publish_with_poetry(dist_files: list[Path], config: PublishConfig) -> None:
         raise PublishError("No distribution files to publish")
 
     try:
-        subprocess.run(
-            cmd,
-            cwd=project_dir,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        if console:
+            with console.status("[bold blue]Publishing to PyPI...", spinner="dots"):
+                subprocess.run(
+                    cmd,
+                    cwd=project_dir,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+        else:
+            subprocess.run(
+                cmd,
+                cwd=project_dir,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
     except subprocess.CalledProcessError as e:
         stderr = e.stderr.lower()
         if "already exists" in stderr or "file already uploaded" in stderr:
@@ -301,7 +365,9 @@ def _publish_with_poetry(dist_files: list[Path], config: PublishConfig) -> None:
         raise UploadError(f"poetry publish failed:\n{e.stderr}") from e
 
 
-def _publish_with_pdm(dist_files: list[Path], config: PublishConfig) -> None:
+def _publish_with_pdm(
+    dist_files: list[Path], config: PublishConfig, *, console: Console | None = None
+) -> None:
     """Publish using pdm publish.
 
     PDM publish supports:
@@ -313,6 +379,7 @@ def _publish_with_pdm(dist_files: list[Path], config: PublishConfig) -> None:
     Args:
         dist_files: Distribution files to publish
         config: Publishing configuration
+        console: Rich console for progress indicators (optional)
 
     Raises:
         PublishError: If pdm not found
@@ -334,13 +401,23 @@ def _publish_with_pdm(dist_files: list[Path], config: PublishConfig) -> None:
         raise PublishError("No distribution files to publish")
 
     try:
-        subprocess.run(
-            cmd,
-            cwd=project_dir,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        if console:
+            with console.status("[bold blue]Publishing to PyPI...", spinner="dots"):
+                subprocess.run(
+                    cmd,
+                    cwd=project_dir,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+        else:
+            subprocess.run(
+                cmd,
+                cwd=project_dir,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
     except subprocess.CalledProcessError as e:
         stderr = e.stderr.lower()
         if "already exists" in stderr or "file already uploaded" in stderr:

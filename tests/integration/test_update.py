@@ -422,3 +422,31 @@ initial_version = "1.0.0"
             content = pyproject.read_text()
             # Should bump from 1.0.0 to 1.0.1, not use initial_version
             assert 'version = "1.0.1"' in content
+
+
+class TestGitHubRemoteWarning:
+    """Tests for GitHub remote detection warning."""
+
+    def test_update_warns_when_github_remote_not_detected(
+        self, repo_with_feat_commit: Path
+    ):
+        """update shows warning when GitHub remote cannot be detected."""
+        # Remove the remote so GitHub detection fails
+        subprocess.run(
+            ["git", "remote", "remove", "origin"],
+            cwd=repo_with_feat_commit,
+            check=False,
+            capture_output=True,
+        )
+
+        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+            mock_changelog.return_value = "## [1.1.0]"
+
+            result = runner.invoke(
+                app, ["update", str(repo_with_feat_commit), "--execute"]
+            )
+
+            assert result.exit_code == 0
+            # Should show warning about missing GitHub remote
+            assert "Could not detect GitHub repository" in result.stdout
+            assert "Changelog will not include PR links" in result.stdout

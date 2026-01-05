@@ -1,13 +1,13 @@
 """Exception hierarchy for releasio.
 
-All exceptions inherit from ReleasePyError, allowing callers to catch
+All exceptions inherit from ReleasioError, allowing callers to catch
 all releasio errors with a single except clause if desired.
 """
 
 from __future__ import annotations
 
 
-class ReleasePyError(Exception):
+class ReleasioError(Exception):
     """Base exception for all releasio errors."""
 
     def __init__(self, message: str) -> None:
@@ -20,7 +20,7 @@ class ReleasePyError(Exception):
 # =============================================================================
 
 
-class ConfigError(ReleasePyError):
+class ConfigError(ReleasioError):
     """Error in configuration parsing or validation."""
 
 
@@ -37,7 +37,7 @@ class ConfigValidationError(ConfigError):
 # =============================================================================
 
 
-class GitError(ReleasePyError):
+class GitError(ReleasioError):
     """Error during git operations."""
 
 
@@ -66,7 +66,7 @@ class TagExistsError(GitError):
 # =============================================================================
 
 
-class ProjectError(ReleasePyError):
+class ProjectError(ReleasioError):
     """Error related to project detection or manipulation."""
 
 
@@ -87,7 +87,7 @@ class MultipleVersionsError(ProjectError):
 # =============================================================================
 
 
-class VersionError(ReleasePyError):
+class VersionError(ReleasioError):
     """Error related to version parsing or manipulation."""
 
 
@@ -107,7 +107,7 @@ class InvalidVersionError(VersionError):
 # =============================================================================
 
 
-class ForgeError(ReleasePyError):
+class ForgeError(ReleasioError):
     """Error during forge (GitHub/GitLab/Gitea) operations."""
 
 
@@ -139,7 +139,7 @@ class ReleaseError(ForgeError):
 # =============================================================================
 
 
-class PublishError(ReleasePyError):
+class PublishError(ReleasioError):
     """Error during package publishing."""
 
 
@@ -165,7 +165,7 @@ class AlreadyPublishedError(PublishError):
 # =============================================================================
 
 
-class ChangelogError(ReleasePyError):
+class ChangelogError(ReleasioError):
     """Error during changelog generation."""
 
 

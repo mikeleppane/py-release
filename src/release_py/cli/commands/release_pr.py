@@ -250,7 +250,11 @@ def run_release_pr(
         # Generate changelog with GitHub integration for PR links and @usernames
         github_repo_str = f"{github_owner}/{github_repo}"
         changelog_content = generate_changelog(
-            repo=repo, version=next_version, config=config, github_repo=github_repo_str
+            repo=repo,
+            version=next_version,
+            config=config,
+            github_repo=github_repo_str,
+            console=console,
         )
         changelog_path = project_path / config.changelog.path
 

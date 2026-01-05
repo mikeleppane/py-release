@@ -378,13 +378,17 @@ def _perform_update(
             github_repo = config.github.repo or repo_name
             github_repo_str = f"{github_owner}/{github_repo}"
         except Exception:
-            pass
+            console.print(
+                "  [dim][yellow]Note:[/] Could not detect GitHub repository. "
+                "Changelog will not include PR links.[/]"
+            )
 
         changelog_content = generate_changelog(
             repo=repo,
             version=next_version,
             config=config,
             github_repo=github_repo_str,
+            console=console,
         )
 
         changelog_path = project_path / config.changelog.path
@@ -427,6 +431,7 @@ def _perform_publish(
             custom_command=custom_build,
             version=str(next_version),
             tool=config.publish.tool,
+            console=console,
         )
         console.print("  [green]✓[/] Built package")
     except Exception as e:
@@ -436,7 +441,7 @@ def _perform_publish(
     # Publish
     console.print("  • Publishing to PyPI...")
     try:
-        publish_package(project_path, config.publish)
+        publish_package(project_path, config.publish, console=console)
         console.print("  [green]✓[/] Published to PyPI")
     except Exception as e:
         err_console.print(f"[red]Error publishing to PyPI:[/] {e}")
@@ -503,6 +508,7 @@ def _create_github_release(
                 next_version,
                 config,
                 github_repo=github_repo_str,
+                console=console,
             )
         except Exception as e:
             console.print(

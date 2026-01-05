@@ -138,6 +138,8 @@ def _load_allowed_types(path: str | None) -> frozenset[str]:
         all_types.update(["docs", "style", "ci", "chore", "build", "revert", "test"])
         return frozenset(all_types)
     except Exception:
+        # Silent fallback is acceptable here - config loading failure results in
+        # reasonable defaults, and this is a low-impact validation-only command
         return DEFAULT_ALLOWED_TYPES
 
 

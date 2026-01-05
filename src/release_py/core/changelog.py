@@ -22,6 +22,8 @@ import subprocess
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from rich.console import Console  # Used at runtime for console.status()
+
 from release_py.core.version import BumpType
 from release_py.exceptions import ChangelogError, GitCliffError
 
@@ -113,6 +115,7 @@ def generate_changelog(
     *,
     unreleased_only: bool = True,
     github_repo: str | None = None,
+    console: Console | None = None,
 ) -> str:
     """Generate changelog content using git-cliff.
 
@@ -123,6 +126,7 @@ def generate_changelog(
         unreleased_only: Only generate for unreleased changes
         github_repo: GitHub repo in "owner/repo" format for enhanced changelog
                     (adds PR links, @usernames, first-time contributor badges)
+        console: Rich console for progress indicators (optional)
 
     Returns:
         Generated changelog content as string
@@ -137,6 +141,7 @@ def generate_changelog(
             version=version,
             unreleased_only=unreleased_only,
             github_repo=github_repo,
+            console=console,
         )
     except FileNotFoundError as e:
         raise ChangelogError(
@@ -150,6 +155,7 @@ def _run_git_cliff(
     version: Version,
     unreleased_only: bool,
     github_repo: str | None = None,
+    console: Console | None = None,
 ) -> str:
     """Run git-cliff subprocess.
 
@@ -158,6 +164,7 @@ def _run_git_cliff(
         version: Version for the release
         unreleased_only: Only unreleased changes
         github_repo: GitHub repo in "owner/repo" format for GitHub integration
+        console: Rich console for progress indicators (optional)
 
     Returns:
         Changelog content
@@ -184,13 +191,23 @@ def _run_git_cliff(
         args.extend(["--config", str(pyproject_path)])
 
     try:
-        result = subprocess.run(
-            args,
-            capture_output=True,
-            text=True,
-            check=True,
-            cwd=repo.path,
-        )
+        if console:
+            with console.status("[bold blue]Generating changelog...", spinner="dots"):
+                result = subprocess.run(
+                    args,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    cwd=repo.path,
+                )
+        else:
+            result = subprocess.run(
+                args,
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=repo.path,
+            )
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
         raise GitCliffError(
