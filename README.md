@@ -185,6 +185,60 @@ jobs:
 | `release-url` | GitHub release URL |
 | `tag` | Git tag created |
 
+## Required Credentials
+
+Releasio needs credentials for PyPI publishing and GitHub releases.
+
+### PyPI Publishing
+
+For publishing to PyPI, set one of these (in order of precedence):
+
+| Method | Environment Variable | Notes |
+|--------|---------------------|-------|
+| **Trusted Publishing** (recommended) | None | Works automatically in GitHub Actions with OIDC |
+| **PyPI Token** | `PYPI_TOKEN` | API token from pypi.org |
+| **UV Token** | `UV_PUBLISH_TOKEN` | Alternative for uv |
+| **pypirc file** | None | Configure `~/.pypirc` |
+
+**Getting a PyPI Token:**
+1. Go to [pypi.org/manage/account](https://pypi.org/manage/account/)
+2. Create an API token (project-scoped recommended)
+3. Set it as `PYPI_TOKEN` environment variable
+
+### GitHub Releases
+
+For creating GitHub releases, set one of these:
+
+| Method | Environment Variable | Notes |
+|--------|---------------------|-------|
+| **GitHub Actions** | `GITHUB_TOKEN` | Automatically available via `secrets.GITHUB_TOKEN` |
+| **Personal Token** | `GITHUB_TOKEN` or `GH_TOKEN` | PAT with `contents: write` permission |
+
+**Required Permissions:**
+- `contents: write` - Create releases and push tags
+
+### Local Development Example
+
+```bash
+# Set credentials for local releases
+export PYPI_TOKEN="pypi-..."
+export GITHUB_TOKEN="ghp_..."
+
+# Now run the release
+releasio do-release --execute
+```
+
+### GitHub Actions Example
+
+```yaml
+- uses: mikeleppane/release-py@v2
+  with:
+    command: release
+    execute: true
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+  # PyPI uses trusted publishing - no token needed!
+```
+
 ## How It Works
 
 ```text
@@ -537,9 +591,13 @@ use_conventional_fallback = true # Fall back to conventional if no parser matche
 [tool.releasio.changelog]
 enabled = true
 path = "CHANGELOG.md"
+header = ""                      # Custom header text for changelog
 use_github_prs = false           # Use PR-based changelog (for squash merges)
 show_authors = false             # Include author in changelog entries
 show_commit_hash = false         # Include commit hash in changelog entries
+show_first_time_contributors = false  # Highlight first-time contributors
+first_contributor_badge = "🎉"   # Badge for first-time contributors
+include_dependency_updates = false    # Include dependency changes section
 commit_template = ""             # Custom template: "{description} by @{author}"
 native_fallback = true           # Generate natively if git-cliff unavailable
 generate_cliff_config = false    # Auto-generate git-cliff config
@@ -569,6 +627,15 @@ post_bump = []                   # Commands after version bump
 pre_release = []                 # Commands before release
 post_release = []                # Commands after release
 build = ""                       # Custom build command (replaces uv build)
+
+[tool.releasio.security]
+enabled = false                  # Enable security commit detection
+auto_create_advisory = false     # Create GitHub Security Advisory
+security_patterns = [            # Patterns to detect security commits
+    "fix\\(security\\):",
+    "security:",
+    "CVE-\\d{4}-\\d+",
+]
 
 # Multi-branch release channels (optional)
 [tool.releasio.branches.main]
@@ -624,11 +691,9 @@ check_existing_version = true   # Check if version already exists on PyPI
 
 Falls back to basic checks (file existence, extension validation) if `twine` is not installed.
 
-### Future Features (Coming Soon)
+### First-Time Contributor Recognition
 
-The following features are planned and have configuration fields available, but are not yet implemented. See TODO comments in the codebase for implementation details:
-
-#### First-Time Contributor Recognition
+Highlight first-time contributors in changelogs with a customizable badge:
 
 ```toml
 [tool.releasio.changelog]
@@ -636,18 +701,63 @@ show_first_time_contributors = true
 first_contributor_badge = "🎉 First contribution!"
 ```
 
-Highlights first-time contributors in changelogs with a customizable badge. Perfect for celebrating new community members.
+When enabled, releasio checks the git history to identify authors who are contributing for the first time in this release. Their changelog entries will include the badge.
 
-#### Dependency Update Notifications
+### Dependency Update Tracking
+
+Automatically detect and include dependency updates in the changelog:
 
 ```toml
 [tool.releasio.changelog]
 include_dependency_updates = true
 ```
 
-Automatically detects and includes dependency updates in the changelog by comparing lock files (uv.lock, poetry.lock, pdm.lock) between releases.
+Releasio compares lock files between releases to identify dependency changes. Supports:
 
-#### Security Advisory Integration
+- `uv.lock` (uv)
+- `poetry.lock` (Poetry)
+- `pdm.lock` (PDM)
+- `requirements.txt`
+
+Example changelog output:
+
+```markdown
+### 📦 Dependencies
+
+- httpx: 0.27.0 → 0.28.0
+- Added pydantic 2.5.0
+- Removed deprecated-package 1.0.0
+```
+
+### Release Hooks
+
+Run custom commands at specific points during the release process:
+
+```toml
+[tool.releasio.hooks]
+pre_release = ["npm run lint", "pytest"]
+post_release = ["./scripts/notify-slack.sh"]
+```
+
+Hooks support template variables:
+
+- `{version}` - The version being released
+- `{tag}` - The git tag (e.g., `v1.2.0`)
+- `{project_path}` - Path to the project directory
+
+Example with templates:
+
+```toml
+[tool.releasio.hooks]
+pre_release = ["echo 'Releasing {version}'"]
+post_release = ["curl -X POST https://hooks.slack.com/... -d 'Released {tag}'"]
+```
+
+If any pre-release hook fails, the release is aborted. Post-release hooks run after the release completes (warnings shown on failure but release continues).
+
+### Security Advisory Integration
+
+Automatically detect security-related commits and optionally create GitHub Security Advisories:
 
 ```toml
 [tool.releasio.security]
@@ -660,7 +770,47 @@ security_patterns = [
 ]
 ```
 
-Automatically creates GitHub Security Advisories when security-related commits are detected in a release.
+**Detection:** Commits matching any pattern are flagged as security fixes. CVE identifiers are automatically extracted from commit messages.
+
+**Advisory Creation:** When `auto_create_advisory = true` and security commits are detected, releasio creates a GitHub Security Advisory with:
+
+- Summary of security fixes
+- CVE IDs (if found in commits)
+- Recommendation to upgrade
+
+### Custom Changelog Header
+
+Add a custom header to your changelog:
+
+```toml
+[tool.releasio.changelog]
+header = "All notable changes to this project will be documented in this file."
+```
+
+### Custom Registry URL
+
+Publish to a private PyPI registry or test.pypi.org:
+
+```toml
+[tool.releasio.publish]
+registry = "https://test.pypi.org/legacy/"
+```
+
+### Trusted Publishing Control
+
+Control OIDC trusted publishing behavior:
+
+```toml
+[tool.releasio.publish]
+trusted_publishing = true   # Default: auto-detect OIDC environment
+```
+
+When enabled:
+
+- In GitHub Actions with OIDC: Uses `--trusted-publishing=always`
+- Outside GitHub Actions: Falls back to `--trusted-publishing=automatic`
+
+Set to `false` to always require a PyPI token.
 
 ## Requirements
 

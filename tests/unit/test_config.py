@@ -24,6 +24,7 @@ from releasio.config.models import (
     PackagesConfig,
     PublishConfig,
     ReleasePyConfig,
+    SecurityConfig,
     VersionConfig,
 )
 from releasio.exceptions import ConfigNotFoundError, ConfigValidationError
@@ -205,6 +206,47 @@ class TestChangelogConfig:
         config = ChangelogConfig(commit_template="{description} by @{author} ({hash})")
         assert config.commit_template == "{description} by @{author} ({hash})"
 
+    def test_header(self):
+        """Custom changelog header."""
+        custom_header = "# My Project Changelog\n\nAll changes are documented here."
+        config = ChangelogConfig(header=custom_header)
+        assert config.header == custom_header
+
+    def test_header_default(self):
+        """Default header is None."""
+        config = ChangelogConfig()
+        assert config.header is None
+
+    def test_show_first_time_contributors(self):
+        """Show first-time contributors option."""
+        config = ChangelogConfig(show_first_time_contributors=True)
+        assert config.show_first_time_contributors is True
+
+    def test_show_first_time_contributors_default(self):
+        """Default is to not show first-time contributors."""
+        config = ChangelogConfig()
+        assert config.show_first_time_contributors is False
+
+    def test_first_contributor_badge(self):
+        """Custom first contributor badge."""
+        config = ChangelogConfig(first_contributor_badge="(new contributor)")
+        assert config.first_contributor_badge == "(new contributor)"
+
+    def test_first_contributor_badge_default(self):
+        """Default first contributor badge has emoji."""
+        config = ChangelogConfig()
+        assert "First contribution" in config.first_contributor_badge
+
+    def test_include_dependency_updates(self):
+        """Include dependency updates option."""
+        config = ChangelogConfig(include_dependency_updates=True)
+        assert config.include_dependency_updates is True
+
+    def test_include_dependency_updates_default(self):
+        """Default is to not include dependency updates."""
+        config = ChangelogConfig()
+        assert config.include_dependency_updates is False
+
 
 class TestVersionConfig:
     """Tests for VersionConfig model."""
@@ -216,6 +258,43 @@ class TestVersionConfig:
         assert config.initial_version == "0.1.0"
         assert config.tag_prefix == "v"
         assert config.pre_release is None
+        assert config.version_files == []
+        assert config.auto_detect_version_files is False
+        assert config.update_lock_file is True
+
+    def test_version_files_configuration(self):
+        """Additional version files can be configured."""
+        config = VersionConfig(
+            version_files=[Path("src/mypackage/__version__.py"), Path("VERSION")]
+        )
+
+        assert len(config.version_files) == 2
+        assert Path("src/mypackage/__version__.py") in config.version_files
+
+    def test_auto_detect_version_files_enabled(self):
+        """Auto-detect version files can be enabled."""
+        config = VersionConfig(auto_detect_version_files=True)
+        assert config.auto_detect_version_files is True
+
+    def test_update_lock_file_disabled(self):
+        """Lock file update can be disabled."""
+        config = VersionConfig(update_lock_file=False)
+        assert config.update_lock_file is False
+
+    def test_pre_release_configuration(self):
+        """Pre-release identifier can be configured."""
+        config = VersionConfig(pre_release="alpha")
+        assert config.pre_release == "alpha"
+
+    def test_custom_tag_prefix(self):
+        """Custom tag prefix can be configured."""
+        config = VersionConfig(tag_prefix="release-")
+        assert config.tag_prefix == "release-"
+
+    def test_custom_initial_version(self):
+        """Custom initial version can be configured."""
+        config = VersionConfig(initial_version="1.0.0")
+        assert config.initial_version == "1.0.0"
 
 
 class TestGitHubConfig:
@@ -229,6 +308,31 @@ class TestGitHubConfig:
         assert config.repo is None
         assert config.release_pr_branch == "releasio/release"
         assert config.release_pr_labels == ["release"]
+        assert config.draft_releases is False
+        assert config.release_assets == []
+
+    def test_draft_releases_enabled(self):
+        """Draft releases can be enabled."""
+        config = GitHubConfig(draft_releases=True)
+        assert config.draft_releases is True
+
+    def test_draft_releases_disabled_by_default(self):
+        """Draft releases are disabled by default."""
+        config = GitHubConfig()
+        assert config.draft_releases is False
+
+    def test_release_assets_configuration(self):
+        """Release assets can be configured with glob patterns."""
+        config = GitHubConfig(release_assets=["dist/*.whl", "dist/*.tar.gz", "docs/build/html.zip"])
+
+        assert len(config.release_assets) == 3
+        assert "dist/*.whl" in config.release_assets
+        assert "dist/*.tar.gz" in config.release_assets
+
+    def test_release_assets_empty_by_default(self):
+        """Release assets are empty by default."""
+        config = GitHubConfig()
+        assert config.release_assets == []
 
 
 class TestPublishConfig:
@@ -241,6 +345,40 @@ class TestPublishConfig:
         assert config.enabled is True
         assert config.tool == "uv"
         assert config.trusted_publishing is True
+        assert config.registry == "https://upload.pypi.org/legacy/"
+        assert config.validate_before_publish is True
+        assert config.check_existing_version is True
+
+    def test_registry_custom(self):
+        """Custom registry URL can be configured."""
+        config = PublishConfig(registry="https://test.pypi.org/legacy/")
+        assert config.registry == "https://test.pypi.org/legacy/"
+
+    def test_registry_default_is_pypi(self):
+        """Default registry is PyPI."""
+        config = PublishConfig()
+        assert "pypi.org" in config.registry
+
+    def test_trusted_publishing_disabled(self):
+        """Trusted publishing can be disabled."""
+        config = PublishConfig(trusted_publishing=False)
+        assert config.trusted_publishing is False
+
+    def test_validate_before_publish_disabled(self):
+        """Validation before publish can be disabled."""
+        config = PublishConfig(validate_before_publish=False)
+        assert config.validate_before_publish is False
+
+    def test_check_existing_version_disabled(self):
+        """Check existing version can be disabled."""
+        config = PublishConfig(check_existing_version=False)
+        assert config.check_existing_version is False
+
+    def test_tool_options(self):
+        """Different publish tools can be configured."""
+        for tool in ["uv", "poetry", "pdm", "twine"]:
+            config = PublishConfig(tool=tool)
+            assert config.tool == tool
 
 
 class TestPackagesConfig:
@@ -252,6 +390,28 @@ class TestPackagesConfig:
 
         assert config.paths == []
         assert config.independent is True
+
+    def test_monorepo_paths_configuration(self):
+        """Monorepo paths can be configured."""
+        config = PackagesConfig(paths=["packages/core", "packages/cli", "packages/lib"])
+
+        assert len(config.paths) == 3
+        assert "packages/core" in config.paths
+
+    def test_independent_versioning_disabled(self):
+        """Independent versioning can be disabled for shared versioning."""
+        config = PackagesConfig(independent=False)
+        assert config.independent is False
+
+    def test_independent_versioning_enabled_by_default(self):
+        """Independent versioning is enabled by default."""
+        config = PackagesConfig()
+        assert config.independent is True
+
+    def test_empty_paths_means_single_package(self):
+        """Empty paths indicates single package at root."""
+        config = PackagesConfig(paths=[])
+        assert config.paths == []
 
 
 class TestHooksConfig:
@@ -296,6 +456,55 @@ class TestHooksConfig:
         )
 
         assert config.build == "python -m build --sdist --wheel"
+
+
+class TestSecurityConfig:
+    """Tests for SecurityConfig model."""
+
+    def test_defaults(self):
+        """Default security configuration."""
+        config = SecurityConfig()
+
+        assert config.enabled is False
+        assert config.auto_create_advisory is True
+        assert len(config.security_patterns) > 0
+
+    def test_default_security_patterns(self):
+        """Default security patterns include common indicators."""
+        config = SecurityConfig()
+
+        # Should have patterns for security commits and CVEs
+        patterns_str = " ".join(config.security_patterns)
+        assert "security" in patterns_str.lower() or "CVE" in patterns_str
+
+    def test_custom_security_patterns(self):
+        """Custom security patterns can be configured."""
+        config = SecurityConfig(
+            security_patterns=[r"SEC-\d+", r"vulnerability:"],
+        )
+
+        assert len(config.security_patterns) == 2
+        assert r"SEC-\d+" in config.security_patterns
+
+    def test_enabled_with_auto_advisory(self):
+        """Security feature enabled with auto advisory."""
+        config = SecurityConfig(
+            enabled=True,
+            auto_create_advisory=True,
+        )
+
+        assert config.enabled is True
+        assert config.auto_create_advisory is True
+
+    def test_disabled_auto_advisory(self):
+        """Auto advisory creation can be disabled."""
+        config = SecurityConfig(
+            enabled=True,
+            auto_create_advisory=False,
+        )
+
+        assert config.enabled is True
+        assert config.auto_create_advisory is False
 
 
 class TestBranchConfig:

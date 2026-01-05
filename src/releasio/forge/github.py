@@ -717,3 +717,85 @@ class GitHubClient:
             lines.append("")
 
         return "\n".join(lines)
+
+    # =========================================================================
+    # Security Advisory Methods
+    # =========================================================================
+
+    async def create_security_advisory(
+        self,
+        owner: str,
+        repo: str,
+        title: str,
+        description: str,
+        severity: str = "medium",
+        vulnerabilities: list[dict[str, Any]] | None = None,
+        cve_ids: list[str] | None = None,
+    ) -> Release | None:
+        """Create a GitHub Security Advisory (draft).
+
+        Note: Creating security advisories requires specific permissions.
+        This creates a draft advisory that needs to be published manually.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            title: Advisory title
+            description: Advisory description (markdown)
+            severity: Severity level (low, medium, high, critical)
+            vulnerabilities: List of affected package/version info
+            cve_ids: List of CVE identifiers (optional)
+
+        Returns:
+            Release-like object with advisory URL, or None if creation failed
+        """
+        path = f"/repos/{owner}/{repo}/security-advisories"
+
+        # Map severity to CVSS format expected by GitHub
+        severity_map = {
+            "low": "low",
+            "medium": "moderate",
+            "high": "high",
+            "critical": "critical",
+        }
+
+        payload: dict[str, Any] = {
+            "summary": title,
+            "description": description,
+            "severity": severity_map.get(severity, "moderate"),
+        }
+
+        if cve_ids:
+            payload["cve_id"] = cve_ids[0] if len(cve_ids) == 1 else None
+
+        if vulnerabilities:
+            payload["vulnerabilities"] = [
+                {
+                    "package": {
+                        "name": vuln.get("package", "unknown"),
+                        "ecosystem": "pip",  # Python ecosystem
+                    },
+                    "patched_versions": vuln.get("patched_versions", ""),
+                    "vulnerable_functions": [],
+                }
+                for vuln in vulnerabilities
+            ]
+
+        try:
+            data = await self._request("POST", path, json=payload)
+            if data:
+                return Release(
+                    tag="",
+                    name=title,
+                    body=description,
+                    url=data.get("html_url", ""),
+                    draft=True,
+                    prerelease=False,
+                    assets=[],
+                )
+        except ForgeError:
+            # Security advisory creation may fail due to permissions
+            # This is non-fatal - the release can proceed without it
+            pass
+
+        return None

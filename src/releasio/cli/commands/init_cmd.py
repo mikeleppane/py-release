@@ -234,19 +234,33 @@ tag_pattern = "v[0-9].*"
     # Append to pyproject.toml
     console.print("[bold]Writing configuration...[/]\n")
 
-    with pyproject_path.open("a") as f:
-        f.write("\n")
-        f.write(config_toml.strip())
-        f.write("\n")
-        f.write(cliff_config.strip())
-        f.write("\n")
+    try:
+        with pyproject_path.open("a") as f:
+            f.write("\n")
+            f.write(config_toml.strip())
+            f.write("\n")
+            f.write(cliff_config.strip())
+            f.write("\n")
+    except OSError as e:
+        err_console.print(
+            f"[red]Error:[/] Failed to write to {pyproject_path}: {e}\n"
+            "Check file permissions and disk space."
+        )
+        raise SystemExit(1) from e
 
     console.print(f"  [green]✓[/] Updated [cyan]{pyproject_path}[/]")
 
     # Create GitHub Actions workflow
     if create_workflow:
         workflows_dir = project_path / ".github" / "workflows"
-        workflows_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            workflows_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            err_console.print(
+                f"[red]Error:[/] Failed to create directory {workflows_dir}: {e}\n"
+                "Check file permissions."
+            )
+            raise SystemExit(1) from e
 
         workflow_path = workflows_dir / "release.yml"
         workflow_content = f"""name: Release
@@ -318,7 +332,14 @@ jobs:
         run: releasio release
 """
 
-        workflow_path.write_text(workflow_content)
+        try:
+            workflow_path.write_text(workflow_content)
+        except OSError as e:
+            err_console.print(
+                f"[red]Error:[/] Failed to write workflow file {workflow_path}: {e}\n"
+                "Check file permissions and disk space."
+            )
+            raise SystemExit(1) from e
         console.print(f"  [green]✓[/] Created [cyan]{workflow_path}[/]")
 
         # Create PR title check workflow if requested
@@ -352,7 +373,14 @@ jobs:
           GITHUB_PR_TITLE: ${{ github.event.pull_request.title }}
         run: releasio check-pr
 """
-            pr_check_path.write_text(pr_check_content)
+            try:
+                pr_check_path.write_text(pr_check_content)
+            except OSError as e:
+                err_console.print(
+                    f"[red]Error:[/] Failed to write workflow file {pr_check_path}: {e}\n"
+                    "Check file permissions and disk space."
+                )
+                raise SystemExit(1) from e
             console.print(f"  [green]✓[/] Created [cyan]{pr_check_path}[/]")
 
     console.print()

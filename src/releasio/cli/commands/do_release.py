@@ -3,11 +3,24 @@
 The do-release command combines update + commit + release into one atomic workflow.
 It updates version files, commits the changes, creates a tag, publishes to PyPI,
 and creates a GitHub release.
+
+Hooks:
+    The release workflow supports pre_release and post_release hooks that can
+    execute arbitrary shell commands at specific points in the release process.
+
+    - pre_release: Runs before Phase 1 (before updating version files)
+    - post_release: Runs after Phase 5 (after GitHub release creation)
+
+    Hook commands can use template variables:
+    - {version}: The version being released (e.g., "1.2.3")
+    - {tag}: The tag name (e.g., "v1.2.3")
+    - {project_path}: Path to the project directory
 """
 
 from __future__ import annotations
 
 import asyncio
+import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,6 +35,66 @@ if TYPE_CHECKING:
     from rich.console import Console
 
     from releasio.config.models import ReleasePyConfig
+
+
+def _run_hook(
+    hook_commands: list[str],
+    hook_name: str,
+    *,
+    version: str,
+    tag: str,
+    project_path: Path,
+    console: Console,
+    err_console: Console,
+) -> bool:
+    """Execute release hook commands.
+
+    Hook commands can use template variables: {version}, {tag}, {project_path}
+
+    Args:
+        hook_commands: List of shell commands to execute
+        hook_name: Name of the hook for logging (e.g., "pre_release")
+        version: Version being released
+        tag: Tag name
+        project_path: Path to the project directory
+        console: Console for standard output
+        err_console: Console for error output
+
+    Returns:
+        True if all hooks succeeded or list was empty, False if any failed
+    """
+    if not hook_commands:
+        return True
+
+    for hook_command in hook_commands:
+        # Substitute template variables
+        expanded_cmd = (
+            hook_command.replace("{version}", version)
+            .replace("{tag}", tag)
+            .replace("{project_path}", str(project_path))
+        )
+
+        console.print(f"  Running {hook_name} hook: [cyan]{expanded_cmd}[/]")
+
+        try:
+            result = subprocess.run(
+                expanded_cmd,
+                shell=True,
+                cwd=project_path,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            if result.stdout.strip():
+                console.print(f"  [dim]{result.stdout.strip()}[/]")
+            console.print(f"  [green]✓[/] {hook_name} hook completed")
+        except subprocess.CalledProcessError as e:
+            err_console.print(f"  [red]✗[/] {hook_name} hook failed")
+            if e.stderr:
+                err_console.print(f"  [dim]{e.stderr.strip()}[/]")
+            return False
+
+    return True
 
 
 def run_do_release(
@@ -60,10 +133,11 @@ def run_do_release(
         err_console.print(f"[red]Error:[/] {e}")
         raise SystemExit(1) from e
 
-    # Must be clean (no uncommitted changes)
-    if repo.is_dirty():
+    # Must be clean (no uncommitted changes) unless allow_dirty is set
+    if not config.allow_dirty and repo.is_dirty():
         err_console.print(
-            "[red]Error:[/] Repository has uncommitted changes.\nCommit or stash them first."
+            "[red]Error:[/] Repository has uncommitted changes.\n"
+            "Commit or stash them, or use [cyan]allow_dirty = true[/] in config."
         )
         raise SystemExit(1)
 
@@ -177,6 +251,25 @@ def run_do_release(
             f"[cyan]{current_version}[/] → [green]{next_version}[/][/]\n"
         )
 
+    # Run pre_release hook if configured
+    if config.hooks.pre_release:
+        console.print("[bold]Pre-release hook[/]")
+        if not _run_hook(
+            config.hooks.pre_release,
+            "pre_release",
+            version=str(next_version),
+            tag=tag_name,
+            project_path=project_path,
+            console=console,
+            err_console=err_console,
+        ):
+            err_console.print(
+                "[red]Error:[/] Pre-release hook failed. Release aborted.\n"
+                "Fix the issue and try again."
+            )
+            raise SystemExit(1)
+        console.print()
+
     # Track modified files for commit
     files_to_commit: list[Path] = []
 
@@ -203,10 +296,15 @@ def run_do_release(
     repo.push_tag(tag_name)
     console.print(f"  [green]✓[/] Created and pushed tag {tag_name}")
 
+    # Track success/failure of each phase
+    pypi_success = True
+    github_success = True
+    github_result: str = ""
+
     # Phase 4: Build and publish
     if not skip_publish and config.publish.enabled:
         console.print("\n[bold]Phase 4: Publishing to PyPI[/]")
-        _perform_publish(
+        pypi_success, _pypi_error = _perform_publish(
             project_path=project_path,
             project_name=project_name,
             next_version=next_version,
@@ -217,9 +315,9 @@ def run_do_release(
     elif skip_publish:
         console.print("\n[bold]Phase 4: Skipping publish (--skip-publish)[/]")
 
-    # Phase 5: Create GitHub release
+    # Phase 5: Create GitHub release (always attempt, even if PyPI failed)
     console.print("\n[bold]Phase 5: Creating GitHub release[/]")
-    release_url = _create_github_release(
+    github_success, github_result = _create_github_release(
         project_name=project_name,
         next_version=next_version,
         tag_name=tag_name,
@@ -229,22 +327,91 @@ def run_do_release(
         err_console=err_console,
     )
 
-    # Success!
-    console.print()
-    console.print(
-        Panel(
-            f"[bold green]🎉 Successfully released {project_name} v{next_version}![/]\n\n"
-            f"[bold]GitHub Release:[/] {release_url}\n"
-            + (
-                f"[bold]PyPI:[/] https://pypi.org/project/{project_name}/{next_version}/\n"
-                if not skip_publish and config.publish.enabled
-                else ""
-            )
-            + "\nThank you for using releasio! ⭐",
-            title="[bold green]Release Complete[/]",
-            border_style="green",
+    # Run post_release hook if configured (runs regardless of success/failure)
+    post_release_success = True
+    if config.hooks.post_release:
+        console.print("\n[bold]Post-release hook[/]")
+        post_release_success = _run_hook(
+            config.hooks.post_release,
+            "post_release",
+            version=str(next_version),
+            tag=tag_name,
+            project_path=project_path,
+            console=console,
+            err_console=err_console,
         )
-    )
+        if not post_release_success:
+            err_console.print(
+                "[yellow]Warning:[/] Post-release hook failed. "
+                "Release completed but hook did not run successfully."
+            )
+
+    # Show summary
+    console.print()
+
+    # Determine overall status
+    all_success = pypi_success and github_success
+    pypi_skipped = skip_publish or not config.publish.enabled
+
+    if all_success:
+        # Full success
+        console.print(
+            Panel(
+                f"[bold green]🎉 Successfully released {project_name} v{next_version}![/]\n\n"
+                f"[bold]GitHub Release:[/] {github_result}\n"
+                + (
+                    f"[bold]PyPI:[/] https://pypi.org/project/{project_name}/{next_version}/\n"
+                    if not pypi_skipped
+                    else ""
+                )
+                + "\nThank you for using releasio! ⭐",
+                title="[bold green]Release Complete[/]",
+                border_style="green",
+            )
+        )
+    else:
+        # Partial success - show what worked and what didn't
+        summary_lines = [
+            f"[bold yellow]⚠ Release {project_name} v{next_version} partially completed[/]\n"
+        ]
+
+        # Always show these as they always succeed if we got here
+        summary_lines.append("[green]✓[/] Version updated")
+        summary_lines.append("[green]✓[/] Changes committed")
+        summary_lines.append(f"[green]✓[/] Tag {tag_name} created and pushed")
+
+        if pypi_skipped:
+            summary_lines.append("[dim]- PyPI publish skipped[/]")
+        elif pypi_success:
+            summary_lines.append("[green]✓[/] Published to PyPI")
+        else:
+            summary_lines.append("[red]✗[/] PyPI publish failed")
+
+        if github_success:
+            summary_lines.append(f"[green]✓[/] GitHub release created: {github_result}")
+        else:
+            summary_lines.append("[red]✗[/] GitHub release failed")
+
+        summary_lines.append("\n[bold]To complete the release manually:[/]")
+
+        if not pypi_success and not pypi_skipped:
+            summary_lines.append("  [cyan]PyPI:[/] uv publish  [dim](set PYPI_TOKEN first)[/]")
+
+        if not github_success:
+            summary_lines.append(
+                f"  [cyan]GitHub:[/] Create release at https://github.com/{{owner}}/{{repo}}/releases/new?tag={tag_name}"
+            )
+
+        console.print(
+            Panel(
+                "\n".join(summary_lines),
+                title="[bold yellow]Release Partially Complete[/]",
+                border_style="yellow",
+            )
+        )
+
+        # Exit with error code if anything failed
+        raise SystemExit(1)
 
 
 def _show_preview(
@@ -409,15 +576,19 @@ def _perform_update(
     return files_modified
 
 
-def _perform_publish(
+def _perform_publish(  # noqa: PLR0911
     project_path: Path,
     project_name: str,
     next_version: Version,
     config: ReleasePyConfig,
     console: Console,
     err_console: Console,
-) -> None:
-    """Build and publish package to PyPI."""
+) -> tuple[bool, str | None]:
+    """Build and publish package to PyPI.
+
+    Returns:
+        Tuple of (success, error_message). If success is True, error_message is None.
+    """
     from releasio.publish.pypi import build_package, publish_package
 
     # Build
@@ -437,8 +608,9 @@ def _perform_publish(
         )
         console.print("  [green]✓[/] Built package")
     except Exception as e:
-        err_console.print(f"[red]Error building package:[/] {e}")
-        raise SystemExit(1) from e
+        error_msg = f"Failed to build package: {e}"
+        err_console.print(f"  [red]✗[/] {error_msg}")
+        return False, error_msg
 
     # Validate distribution files
     if config.publish.validate_before_publish:
@@ -448,14 +620,14 @@ def _perform_publish(
         try:
             is_valid, validation_message = validate_dist_files(dist_files)
             if not is_valid:
-                err_console.print(
-                    f"[red]Error:[/] Package validation failed:\n{validation_message}"
-                )
-                raise SystemExit(1)
+                error_msg = f"Package validation failed: {validation_message}"
+                err_console.print(f"  [red]✗[/] {error_msg}")
+                return False, error_msg
             console.print("  [green]✓[/] Distribution files validated")
         except Exception as e:
-            err_console.print(f"[red]Error validating package:[/] {e}")
-            raise SystemExit(1) from e
+            error_msg = f"Failed to validate package: {e}"
+            err_console.print(f"  [red]✗[/] {error_msg}")
+            return False, error_msg
 
     # Check if version already exists on PyPI
     if config.publish.check_existing_version:
@@ -464,24 +636,47 @@ def _perform_publish(
 
         try:
             if check_pypi_version_exists(project_name, str(next_version)):
-                err_console.print(
-                    f"[red]Error:[/] Version {next_version} already exists on PyPI.\n"
+                error_msg = (
+                    f"Version {next_version} already exists on PyPI. "
                     "This version may have already been published."
                 )
-                raise SystemExit(1)
+                err_console.print(f"  [red]✗[/] {error_msg}")
+                return False, error_msg
             console.print("  [green]✓[/] Version not yet published")
         except Exception as e:
-            err_console.print(f"[red]Error checking PyPI:[/] {e}")
-            raise SystemExit(1) from e
+            error_msg = f"Failed to check PyPI: {e}"
+            err_console.print(f"  [red]✗[/] {error_msg}")
+            return False, error_msg
 
     # Publish
     console.print("  • Publishing to PyPI...")
     try:
         publish_package(project_path, config.publish, dist_files=dist_files, console=console)
         console.print("  [green]✓[/] Published to PyPI")
+        return True, None
     except Exception as e:
-        err_console.print(f"[red]Error publishing to PyPI:[/] {e}")
-        raise SystemExit(1) from e
+        error_str = str(e)
+        # Provide helpful hints for common credential errors
+        if "credentials" in error_str.lower() or "token" in error_str.lower():
+            error_msg = (
+                f"PyPI publish failed: {e}\n\n"
+                "[bold yellow]Missing PyPI credentials![/] Set one of:\n"
+                "  • [cyan]PYPI_TOKEN[/] environment variable (recommended)\n"
+                "  • [cyan]UV_PUBLISH_TOKEN[/] environment variable\n"
+                "  • Configure [cyan]~/.pypirc[/] file\n"
+                "  • Use trusted publishing (GitHub Actions OIDC)"
+            )
+        elif "403" in error_str or "forbidden" in error_str.lower():
+            error_msg = (
+                f"PyPI publish failed: {e}\n\n"
+                "[bold yellow]Access denied![/] Check that:\n"
+                "  • Your token has upload permissions\n"
+                "  • The package name is not already taken by another user"
+            )
+        else:
+            error_msg = f"PyPI publish failed: {e}"
+        err_console.print(f"  [red]✗[/] {error_msg}")
+        return False, error_msg
 
 
 def _create_github_release(
@@ -492,8 +687,12 @@ def _create_github_release(
     repo: GitRepository,
     console: Console,
     err_console: Console,
-) -> str:
-    """Create GitHub release. Returns the release URL."""
+) -> tuple[bool, str]:
+    """Create GitHub release.
+
+    Returns:
+        Tuple of (success, release_url_or_error_message).
+    """
     from releasio.forge.github import GitHubClient
 
     console.print("  • Creating GitHub release...")
@@ -503,8 +702,9 @@ def _create_github_release(
         github_owner = config.github.owner or owner
         github_repo = config.github.repo or repo_name
     except Exception as e:
-        err_console.print(f"[red]Error parsing GitHub remote:[/] {e}")
-        raise SystemExit(1) from e
+        error_msg = f"Failed to parse GitHub remote: {e}"
+        err_console.print(f"  [red]✗[/] {error_msg}")
+        return False, error_msg
 
     github = GitHubClient(owner=github_owner, repo=github_repo)
 
@@ -598,18 +798,45 @@ def _create_github_release(
     try:
         release_url, uploaded_assets = asyncio.run(create_release_with_assets())
     except Exception as e:
-        err_console.print(f"[red]Error creating GitHub release:[/] {e}")
-        raise SystemExit(1) from e
-    else:
-        console.print("  [green]✓[/] Created GitHub release")
-        if uploaded_assets:
-            console.print(f"  [green]✓[/] Uploaded {len(uploaded_assets)} asset(s)")
+        error_str = str(e)
+        # Provide helpful hints for common errors
+        if "401" in error_str or "unauthorized" in error_str.lower():
+            error_msg = (
+                f"GitHub release failed: {e}\n\n"
+                "[bold yellow]Missing or invalid GitHub token![/] Set one of:\n"
+                "  • [cyan]GITHUB_TOKEN[/] environment variable (recommended)\n"
+                "  • [cyan]GH_TOKEN[/] environment variable\n"
+                "  • In GitHub Actions, use [cyan]secrets.GITHUB_TOKEN[/]"
+            )
+        elif "403" in error_str or "forbidden" in error_str.lower():
+            error_msg = (
+                f"GitHub release failed: {e}\n\n"
+                "[bold yellow]Insufficient permissions![/] Ensure your token has:\n"
+                "  • [cyan]contents: write[/] permission\n"
+                "  • Access to this repository"
+            )
+        elif "404" in error_str or "not found" in error_str.lower():
+            error_msg = (
+                f"GitHub release failed: {e}\n\n"
+                "[bold yellow]Repository not found![/] Check that:\n"
+                "  • The repository exists\n"
+                "  • Your token has access to it\n"
+                "  • The remote URL is correct"
+            )
+        else:
+            error_msg = f"GitHub release failed: {e}"
+        err_console.print(f"  [red]✗[/] {error_msg}")
+        return False, error_msg
 
-        # TODO: Future Feature - Security Advisory Integration
-        # See detailed implementation notes in release.py:299-336
-        # Same security advisory logic should be applied here
+    console.print("  [green]✓[/] Created GitHub release")
+    if uploaded_assets:
+        console.print(f"  [green]✓[/] Uploaded {len(uploaded_assets)} asset(s)")
 
-        return release_url
+    # TODO: Future Feature - Security Advisory Integration
+    # See detailed implementation notes in release.py:299-336
+    # Same security advisory logic should be applied here
+
+    return True, release_url
 
 
 def _generate_release_body(

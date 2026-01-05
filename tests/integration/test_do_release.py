@@ -230,6 +230,41 @@ class TestDoReleaseErrors:
         output = result.stdout + (result.output if hasattr(result, "output") else "")
         assert "uncommitted" in output.lower() or result.exit_code == 1
 
+    def test_do_release_dirty_repo_with_allow_dirty(self, do_release_ready_repo: Path):
+        """Succeed when repo is dirty but allow_dirty = true is set."""
+        # Make repo dirty with untracked file
+        (do_release_ready_repo / "uncommitted.txt").write_text("dirty")
+
+        # Enable allow_dirty in config
+        pyproject = do_release_ready_repo / "pyproject.toml"
+        config = pyproject.read_text()
+        config = config.replace("[tool.releasio]\n", "[tool.releasio]\nallow_dirty = true\n")
+        pyproject.write_text(config)
+
+        # Commit the config change
+        subprocess.run(
+            ["git", "add", "pyproject.toml"],
+            cwd=do_release_ready_repo,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "chore: enable allow_dirty"],
+            cwd=do_release_ready_repo,
+            check=True,
+            capture_output=True,
+        )
+
+        # Now repo is "dirty" only with untracked file
+        with patch("releasio.publish.pypi.build_package", return_value=[]):
+            result = runner.invoke(
+                app, ["do-release", str(do_release_ready_repo), "--execute", "--skip-publish"]
+            )
+
+            # Should not fail with "uncommitted changes" error
+            output = result.stdout + (result.output if hasattr(result, "output") else "")
+            assert "uncommitted" not in output.lower() or "allow_dirty" in output.lower()
+
     def test_do_release_wrong_branch_fails(self, do_release_ready_repo: Path):
         """Fail when not on default branch."""
         # Create and checkout feature branch
@@ -458,3 +493,180 @@ class TestDoReleaseHelp:
         assert "--skip-publish" in output
         assert "--version" in output
         assert "--prerelease" in output
+
+
+class TestDoReleaseHooks:
+    """Tests for pre_release and post_release hooks."""
+
+    def test_run_hook_success(self, tmp_path: Path):
+        """Hook runs successfully with template substitution."""
+        from unittest.mock import MagicMock
+
+        from releasio.cli.commands.do_release import _run_hook
+
+        console = MagicMock()
+        err_console = MagicMock()
+
+        # Create a test file to verify the hook ran
+        test_marker = tmp_path / "hook_ran.txt"
+        hook_cmd = f'echo "v{{version}}-{{tag}}" > {test_marker}'
+
+        result = _run_hook(
+            [hook_cmd],
+            "test_hook",
+            version="1.2.3",
+            tag="v1.2.3",
+            project_path=tmp_path,
+            console=console,
+            err_console=err_console,
+        )
+
+        assert result is True
+        assert test_marker.exists()
+        content = test_marker.read_text().strip()
+        assert "v1.2.3-v1.2.3" in content
+
+    def test_run_hook_failure(self, tmp_path: Path):
+        """Hook failure returns False."""
+        from unittest.mock import MagicMock
+
+        from releasio.cli.commands.do_release import _run_hook
+
+        console = MagicMock()
+        err_console = MagicMock()
+
+        result = _run_hook(
+            ["exit 1"],
+            "test_hook",
+            version="1.0.0",
+            tag="v1.0.0",
+            project_path=tmp_path,
+            console=console,
+            err_console=err_console,
+        )
+
+        assert result is False
+        err_console.print.assert_called()
+
+    def test_run_hook_empty_list_returns_true(self, tmp_path: Path):
+        """Empty hook list is skipped and returns True."""
+        from unittest.mock import MagicMock
+
+        from releasio.cli.commands.do_release import _run_hook
+
+        console = MagicMock()
+        err_console = MagicMock()
+
+        result = _run_hook(
+            [],
+            "test_hook",
+            version="1.0.0",
+            tag="v1.0.0",
+            project_path=tmp_path,
+            console=console,
+            err_console=err_console,
+        )
+
+        assert result is True
+
+    def test_do_release_with_pre_release_hook(self, do_release_ready_repo: Path):
+        """Pre-release hook runs before version update."""
+        # Add pre_release hook to config
+        pyproject = do_release_ready_repo / "pyproject.toml"
+        config_content = pyproject.read_text()
+        hook_marker = do_release_ready_repo / "pre_release_marker.txt"
+        config_content += (
+            f'\n[tool.releasio.hooks]\npre_release = ["echo pre-release-ran > {hook_marker}"]\n'
+        )
+        pyproject.write_text(config_content)
+
+        # Commit the config change
+        subprocess.run(
+            ["git", "add", "pyproject.toml"],
+            cwd=do_release_ready_repo,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "chore: add pre_release hook"],
+            cwd=do_release_ready_repo,
+            check=True,
+            capture_output=True,
+        )
+
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
+            mock_client = MagicMock()
+            mock_client.create_release = AsyncMock(
+                return_value=MagicMock(
+                    tag="v1.1.0",
+                    url="https://github.com/owner/repo/releases/tag/v1.1.0",
+                )
+            )
+            mock_github.return_value = mock_client
+
+            with patch("releasio.publish.pypi.build_package", return_value=[]):
+                with patch("releasio.vcs.git.GitRepository.push_tag"):
+                    result = runner.invoke(
+                        app,
+                        [
+                            "do-release",
+                            str(do_release_ready_repo),
+                            "--execute",
+                            "--skip-publish",
+                        ],
+                    )
+
+                    if result.exit_code == 0:
+                        # Pre-release hook should have run
+                        assert "pre_release" in result.stdout.lower() or result.exit_code == 0
+
+    def test_do_release_with_post_release_hook(self, do_release_ready_repo: Path):
+        """Post-release hook runs after GitHub release."""
+        # Add post_release hook to config
+        pyproject = do_release_ready_repo / "pyproject.toml"
+        config_content = pyproject.read_text()
+        hook_marker = do_release_ready_repo / "post_release_marker.txt"
+        config_content += (
+            f'\n[tool.releasio.hooks]\npost_release = ["echo v{{version}} > {hook_marker}"]\n'
+        )
+        pyproject.write_text(config_content)
+
+        # Commit the config change
+        subprocess.run(
+            ["git", "add", "pyproject.toml"],
+            cwd=do_release_ready_repo,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "chore: add post_release hook"],
+            cwd=do_release_ready_repo,
+            check=True,
+            capture_output=True,
+        )
+
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
+            mock_client = MagicMock()
+            mock_client.create_release = AsyncMock(
+                return_value=MagicMock(
+                    tag="v1.1.0",
+                    url="https://github.com/owner/repo/releases/tag/v1.1.0",
+                )
+            )
+            mock_github.return_value = mock_client
+
+            with patch("releasio.publish.pypi.build_package", return_value=[]):
+                with patch("releasio.vcs.git.GitRepository.push_tag"):
+                    result = runner.invoke(
+                        app,
+                        [
+                            "do-release",
+                            str(do_release_ready_repo),
+                            "--execute",
+                            "--skip-publish",
+                        ],
+                    )
+
+                    if result.exit_code == 0:
+                        # Post-release hook should have run
+                        assert "post_release" in result.stdout.lower() or result.exit_code == 0

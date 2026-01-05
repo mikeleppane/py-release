@@ -5,10 +5,20 @@ Python packages to PyPI using either uv or twine.
 
 uv is preferred as it's faster and has better UX, but twine
 is supported as a fallback.
+
+Trusted Publishing (OIDC):
+    When running in GitHub Actions with OIDC enabled, no API token is needed.
+    The workflow must have `id-token: write` permission and configure
+    trusted publishing in PyPI settings.
+
+    Detection of trusted publishing environment:
+    - ACTIONS_ID_TOKEN_REQUEST_TOKEN env var present
+    - ACTIONS_ID_TOKEN_REQUEST_URL env var present
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from typing import TYPE_CHECKING
@@ -21,6 +31,21 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from releasio.config.models import PublishConfig
+
+
+def is_trusted_publishing_available() -> bool:
+    """Check if OIDC trusted publishing is available.
+
+    Trusted publishing is available when running in GitHub Actions
+    with the id-token: write permission configured.
+
+    Returns:
+        True if OIDC environment is detected
+    """
+    return bool(
+        os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+        and os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL")
+    )
 
 
 def _get_build_commands(project_path: Path, preferred_tool: str) -> list[tuple[list[str], str]]:
@@ -227,7 +252,11 @@ def publish_package(
 def _publish_with_uv(
     dist_files: list[Path], config: PublishConfig, *, console: Console | None = None
 ) -> None:
-    """Publish using uv publish."""
+    """Publish using uv publish.
+
+    Supports trusted publishing (OIDC) when running in GitHub Actions.
+    Uses --trusted-publishing flag based on config and environment.
+    """
     if shutil.which("uv") is None:
         raise PublishError("uv not found. Install with: pip install uv")
 
@@ -236,6 +265,18 @@ def _publish_with_uv(
     # Add registry if not default PyPI
     if config.registry != "https://upload.pypi.org/legacy/":
         cmd.extend(["--publish-url", config.registry])
+
+    # Configure trusted publishing based on config and environment
+    if config.trusted_publishing:
+        if is_trusted_publishing_available():
+            # OIDC environment detected, use trusted publishing
+            cmd.append("--trusted-publishing=always")
+        else:
+            # Let uv auto-detect (falls back to token if OIDC not available)
+            cmd.append("--trusted-publishing=automatic")
+    else:
+        # Trusted publishing disabled, require token
+        cmd.append("--trusted-publishing=never")
 
     # Add files
     cmd.extend(str(f) for f in dist_files)

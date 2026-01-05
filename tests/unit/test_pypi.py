@@ -743,3 +743,99 @@ class TestValidateDistFiles:
                 # Should call twine check with all three files
                 call_args = mock_run.call_args[0][0]
                 assert len([arg for arg in call_args if arg.endswith((".whl", ".gz", ".zip"))]) == 3
+
+
+class TestTrustedPublishing:
+    """Tests for OIDC trusted publishing functionality."""
+
+    def test_is_trusted_publishing_available_true(self):
+        """Detect OIDC environment when variables are set."""
+        from releasio.publish.pypi import is_trusted_publishing_available
+
+        with patch.dict(
+            "os.environ",
+            {
+                "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "token123",
+                "ACTIONS_ID_TOKEN_REQUEST_URL": "https://token.actions.githubusercontent.com",
+            },
+        ):
+            assert is_trusted_publishing_available() is True
+
+    def test_is_trusted_publishing_available_false(self):
+        """Return False when OIDC environment not available."""
+        from releasio.publish.pypi import is_trusted_publishing_available
+
+        with patch.dict("os.environ", {}, clear=True):
+            assert is_trusted_publishing_available() is False
+
+    def test_is_trusted_publishing_partial_env(self):
+        """Return False when only partial OIDC env is set."""
+        from releasio.publish.pypi import is_trusted_publishing_available
+
+        # Only token set, no URL
+        with patch.dict(
+            "os.environ",
+            {"ACTIONS_ID_TOKEN_REQUEST_TOKEN": "token123"},
+            clear=True,
+        ):
+            assert is_trusted_publishing_available() is False
+
+    def test_publish_uv_trusted_publishing_enabled_with_oidc(self, tmp_path: Path):
+        """Use --trusted-publishing=always when OIDC available and enabled."""
+        dist_dir = tmp_path / "dist"
+        dist_dir.mkdir()
+        whl = dist_dir / "package-1.0.0.whl"
+        whl.touch()
+
+        config = PublishConfig(enabled=True, tool="uv", trusted_publishing=True)
+
+        with patch("shutil.which", return_value="/usr/bin/uv"):
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0)
+                with patch.dict(
+                    "os.environ",
+                    {
+                        "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "token",
+                        "ACTIONS_ID_TOKEN_REQUEST_URL": "https://example.com",
+                    },
+                ):
+                    publish_package(tmp_path, config, dist_files=[whl])
+
+                    call_args = mock_run.call_args[0][0]
+                    assert "--trusted-publishing=always" in call_args
+
+    def test_publish_uv_trusted_publishing_enabled_without_oidc(self, tmp_path: Path):
+        """Use --trusted-publishing=automatic when enabled but no OIDC."""
+        dist_dir = tmp_path / "dist"
+        dist_dir.mkdir()
+        whl = dist_dir / "package-1.0.0.whl"
+        whl.touch()
+
+        config = PublishConfig(enabled=True, tool="uv", trusted_publishing=True)
+
+        with patch("shutil.which", return_value="/usr/bin/uv"):
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0)
+                with patch.dict("os.environ", {}, clear=True):
+                    publish_package(tmp_path, config, dist_files=[whl])
+
+                    call_args = mock_run.call_args[0][0]
+                    assert "--trusted-publishing=automatic" in call_args
+
+    def test_publish_uv_trusted_publishing_disabled(self, tmp_path: Path):
+        """Use --trusted-publishing=never when disabled."""
+        dist_dir = tmp_path / "dist"
+        dist_dir.mkdir()
+        whl = dist_dir / "package-1.0.0.whl"
+        whl.touch()
+
+        config = PublishConfig(enabled=True, tool="uv", trusted_publishing=False)
+
+        with patch("shutil.which", return_value="/usr/bin/uv"):
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0)
+
+                publish_package(tmp_path, config, dist_files=[whl])
+
+                call_args = mock_run.call_args[0][0]
+                assert "--trusted-publishing=never" in call_args

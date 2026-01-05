@@ -534,6 +534,144 @@ class TestGenerateNativeChangelog:
 
         assert "## [2.1.3]" in result
 
+    def test_generate_with_custom_header(self, sample_commit: Commit):
+        """Custom header appears at the top of changelog."""
+        pc = ParsedCommit(
+            commit=sample_commit,
+            commit_type="feat",
+            scope=None,
+            description="new feature",
+            is_breaking=False,
+            is_conventional=True,
+        )
+        custom_header = "# My Project Changelog\n\nAll notable changes are documented here."
+        config = ChangelogConfig(header=custom_header)
+        version = Version(1, 0, 0)
+
+        result = generate_native_changelog([pc], version, config)
+
+        # Header should appear at the beginning
+        assert result.startswith("# My Project Changelog")
+        assert "All notable changes are documented here." in result
+        # Version header should come after custom header
+        header_pos = result.find("# My Project Changelog")
+        version_pos = result.find("## [1.0.0]")
+        assert header_pos < version_pos
+
+    def test_generate_with_first_time_contributors(self, sample_commit: Commit):
+        """First-time contributor badge is added to commit entries."""
+        pc = ParsedCommit(
+            commit=sample_commit,
+            commit_type="feat",
+            scope=None,
+            description="new feature",
+            is_breaking=False,
+            is_conventional=True,
+        )
+        config = ChangelogConfig(show_first_time_contributors=True)
+        version = Version(1, 0, 0)
+
+        # sample_commit author is "Test Author"
+        first_timers = {sample_commit.author_name}
+
+        result = generate_native_changelog(
+            [pc], version, config, first_time_contributors=first_timers
+        )
+
+        assert "🎉 First contribution!" in result
+        assert "- new feature 🎉 First contribution!" in result
+
+    def test_generate_without_first_time_contributors_flag(self, sample_commit: Commit):
+        """First-time contributor badge not shown when flag is disabled."""
+        pc = ParsedCommit(
+            commit=sample_commit,
+            commit_type="feat",
+            scope=None,
+            description="new feature",
+            is_breaking=False,
+            is_conventional=True,
+        )
+        config = ChangelogConfig(show_first_time_contributors=False)
+        version = Version(1, 0, 0)
+
+        first_timers = {sample_commit.author_name}
+
+        result = generate_native_changelog(
+            [pc], version, config, first_time_contributors=first_timers
+        )
+
+        assert "🎉 First contribution!" not in result
+
+    def test_generate_with_custom_first_contributor_badge(self, sample_commit: Commit):
+        """Custom first contributor badge is used."""
+        pc = ParsedCommit(
+            commit=sample_commit,
+            commit_type="feat",
+            scope=None,
+            description="new feature",
+            is_breaking=False,
+            is_conventional=True,
+        )
+        config = ChangelogConfig(
+            show_first_time_contributors=True,
+            first_contributor_badge="(new contributor!)",
+        )
+        version = Version(1, 0, 0)
+
+        first_timers = {sample_commit.author_name}
+
+        result = generate_native_changelog(
+            [pc], version, config, first_time_contributors=first_timers
+        )
+
+        assert "(new contributor!)" in result
+        assert "🎉 First contribution!" not in result
+
+    def test_generate_with_dependency_updates(self, sample_commit: Commit):
+        """Dependency updates section is included."""
+        pc = ParsedCommit(
+            commit=sample_commit,
+            commit_type="feat",
+            scope=None,
+            description="new feature",
+            is_breaking=False,
+            is_conventional=True,
+        )
+        config = ChangelogConfig(include_dependency_updates=True)
+        version = Version(1, 0, 0)
+
+        dep_updates = [
+            "httpx: 0.27.0 → 0.28.0",
+            "Added new-package 1.0.0",
+            "Removed old-package 0.5.0",
+        ]
+
+        result = generate_native_changelog([pc], version, config, dependency_updates=dep_updates)
+
+        assert "### 📦 Dependencies" in result
+        assert "- httpx: 0.27.0 → 0.28.0" in result
+        assert "- Added new-package 1.0.0" in result
+        assert "- Removed old-package 0.5.0" in result
+
+    def test_generate_dependency_updates_disabled(self, sample_commit: Commit):
+        """Dependency updates section not shown when flag is disabled."""
+        pc = ParsedCommit(
+            commit=sample_commit,
+            commit_type="feat",
+            scope=None,
+            description="new feature",
+            is_breaking=False,
+            is_conventional=True,
+        )
+        config = ChangelogConfig(include_dependency_updates=False)
+        version = Version(1, 0, 0)
+
+        dep_updates = ["httpx: 0.27.0 → 0.28.0"]
+
+        result = generate_native_changelog([pc], version, config, dependency_updates=dep_updates)
+
+        assert "### 📦 Dependencies" not in result
+
 
 class TestGenerateCliffConfig:
     """Tests for generate_cliff_config()."""

@@ -217,67 +217,213 @@ def _run_git_cliff(
 
 
 # =============================================================================
-# TODO: Future Feature - First-Time Contributor Recognition
-# =============================================================================
-# Configuration fields already added to ChangelogConfig:
-# - show_first_time_contributors: bool
-# - first_contributor_badge: str
-#
-# Implementation tasks:
-# 1. Query GitHub API for each contributor's contribution history
-#    - Use GitHubClient.get_contributor_stats() or similar endpoint
-#    - Determine if this is their first merged PR to the repository
-# 2. Add badge/marker in changelog for first-time contributors
-#    - Default: "🎉 First contribution!"
-#    - Customizable via config.changelog.first_contributor_badge
-# 3. Update git-cliff template to include first-time contributor markers
-#    - May require post-processing of git-cliff output
-#    - Or use git-cliff's commit_preprocessors feature
-# 4. Handle rate limiting and caching for GitHub API calls
-# 5. Add tests for first-time contributor detection
-#
-# Related files:
-# - src/releasio/forge/github.py - Add get_contributor_stats() method
-# - src/releasio/cli/commands/release.py - Pass config flag to changelog gen
-# - tests/unit/test_changelog.py - Add tests for first-time contributor badges
+# First-Time Contributor Detection
 # =============================================================================
 
 
+def get_first_time_contributors(
+    repo: GitRepository,
+    parsed_commits: list[ParsedCommit],
+) -> set[str]:
+    """Identify first-time contributors from the parsed commits.
+
+    Checks the git history to find authors who have not contributed before
+    the earliest commit in parsed_commits.
+
+    Args:
+        repo: Git repository instance
+        parsed_commits: List of commits in the current release
+
+    Returns:
+        Set of author names who are first-time contributors
+    """
+    if not parsed_commits:
+        return set()
+
+    # Get all unique authors from current commits
+    current_authors = {pc.commit.author_name for pc in parsed_commits}
+
+    # Get the earliest commit date in the release
+    earliest_commit = min(parsed_commits, key=lambda pc: pc.commit.date)
+    earliest_date = earliest_commit.commit.date
+
+    # Get all historical authors before this release
+    try:
+        historical_authors = repo.get_authors_before_date(earliest_date)
+    except (AttributeError, Exception):
+        # If the method doesn't exist or fails, return empty set
+        # This gracefully degrades if git history isn't available
+        return set()
+
+    # First-timers are those in current but not in historical
+    return current_authors - historical_authors
+
+
 # =============================================================================
-# TODO: Future Feature - Dependency Update Notifications
+# Dependency Update Detection
 # =============================================================================
-# Configuration fields already added to ChangelogConfig:
-# - include_dependency_updates: bool
-#
-# Implementation tasks:
-# 1. Parse lock files to detect dependency changes
-#    - Support: uv.lock, poetry.lock, pdm.lock, requirements.txt
-#    - Compare current lock file with previous tagged version
-# 2. Categorize dependency updates:
-#    - Major updates (breaking changes)
-#    - Minor updates (new features)
-#    - Patch updates (bug fixes)
-#    - New dependencies added
-#    - Dependencies removed
-# 3. Generate dependency changelog section:
-#    - Group by category (added, removed, updated)
-#    - Show version changes (e.g., "httpx: 0.27.0 → 0.28.0")
-#    - Link to dependency's changelog if available
-# 4. Integrate with existing changelog generation
-#    - Add as separate "Dependencies" section
-#    - Respect config.changelog.include_dependency_updates flag
-# 5. Handle edge cases:
-#    - First release (no previous lock file)
-#    - Lock file format changes
-#    - Transitive dependency updates
-# 6. Add tests for dependency detection and changelog formatting
-#
-# Related files:
-# - src/releasio/project/dependencies.py (new) - Lock file parsing logic
-# - src/releasio/vcs/git.py - Add method to get file content at tag
-# - src/releasio/cli/commands/release.py - Pass config flag
-# - tests/unit/test_dependencies.py (new) - Tests for lock file parsing
-# =============================================================================
+
+
+def parse_dependency_updates(
+    repo: GitRepository,
+    previous_tag: str | None,
+) -> list[str]:
+    """Parse dependency changes between versions.
+
+    Compares lock files between the previous tag and HEAD to identify
+    dependency changes.
+
+    Args:
+        repo: Git repository instance
+        previous_tag: Previous version tag (None for first release)
+
+    Returns:
+        List of dependency update strings (e.g., "httpx: 0.27.0 → 0.28.0")
+    """
+    if previous_tag is None:
+        return []
+
+    updates: list[str] = []
+
+    # Try different lock file formats
+    lock_files = ["uv.lock", "poetry.lock", "pdm.lock", "requirements.txt"]
+
+    for lock_file in lock_files:
+        try:
+            old_content = repo.get_file_at_ref(lock_file, previous_tag)
+            new_content = repo.get_file_at_ref(lock_file, "HEAD")
+
+            if old_content is None or new_content is None:
+                continue
+
+            file_updates = _parse_lock_file_diff(lock_file, old_content, new_content)
+            updates.extend(file_updates)
+            break  # Only use the first lock file found
+        except (AttributeError, Exception):
+            # If the method doesn't exist or fails, continue to next file
+            continue
+
+    return updates
+
+
+def _parse_lock_file_diff(
+    filename: str,
+    old_content: str,
+    new_content: str,
+) -> list[str]:
+    """Parse the diff between two versions of a lock file.
+
+    Args:
+        filename: Name of the lock file
+        old_content: Content at previous version
+        new_content: Content at current version
+
+    Returns:
+        List of dependency update strings
+    """
+    updates: list[str] = []
+
+    if filename == "uv.lock":
+        updates = _parse_uv_lock_diff(old_content, new_content)
+    elif filename == "poetry.lock":
+        updates = _parse_poetry_lock_diff(old_content, new_content)
+    elif filename == "pdm.lock":
+        updates = _parse_pdm_lock_diff(old_content, new_content)
+    elif filename == "requirements.txt":
+        updates = _parse_requirements_diff(old_content, new_content)
+
+    return updates
+
+
+def _compute_package_diff(
+    old_packages: dict[str, str],
+    new_packages: dict[str, str],
+) -> list[str]:
+    """Compute the difference between two package version dictionaries.
+
+    Args:
+        old_packages: Dictionary of package name -> version at old ref
+        new_packages: Dictionary of package name -> version at new ref
+
+    Returns:
+        Sorted list of update strings
+    """
+    old_names = set(old_packages.keys())
+    new_names = set(new_packages.keys())
+
+    # Build updates list using list comprehensions
+    added = [f"Added {name} {new_packages[name]}" for name in new_names - old_names]
+    removed = [f"Removed {name} {old_packages[name]}" for name in old_names - new_names]
+    updated = [
+        f"{name}: {old_packages[name]} → {new_packages[name]}"
+        for name in old_names & new_names
+        if old_packages[name] != new_packages[name]
+    ]
+
+    return sorted(added + removed + updated)
+
+
+def _parse_uv_lock_diff(old_content: str, new_content: str) -> list[str]:
+    """Parse uv.lock file diff for dependency changes."""
+    import re
+
+    # Extract package versions from uv.lock format
+    # Format: [[package]]\nname = "package-name"\nversion = "1.2.3"
+    package_pattern = re.compile(
+        r'\[\[package\]\]\s*name\s*=\s*"([^"]+)"\s*version\s*=\s*"([^"]+)"',
+        re.MULTILINE,
+    )
+
+    old_packages = dict(package_pattern.findall(old_content))
+    new_packages = dict(package_pattern.findall(new_content))
+
+    return _compute_package_diff(old_packages, new_packages)
+
+
+def _parse_poetry_lock_diff(old_content: str, new_content: str) -> list[str]:
+    """Parse poetry.lock file diff for dependency changes."""
+    import re
+
+    # Extract package versions from poetry.lock format
+    # Format: [[package]]\nname = "package-name"\nversion = "1.2.3"
+    package_pattern = re.compile(
+        r'\[\[package\]\]\s*name\s*=\s*"([^"]+)"\s*version\s*=\s*"([^"]+)"',
+        re.MULTILINE | re.DOTALL,
+    )
+
+    old_packages = dict(package_pattern.findall(old_content))
+    new_packages = dict(package_pattern.findall(new_content))
+
+    return _compute_package_diff(old_packages, new_packages)
+
+
+def _parse_pdm_lock_diff(old_content: str, new_content: str) -> list[str]:
+    """Parse pdm.lock file diff for dependency changes."""
+    import re
+
+    # PDM lock format: [[package]]\nname = "package"\nversion = "1.0.0"
+    package_pattern = re.compile(
+        r'\[\[package\]\]\s*name\s*=\s*"([^"]+)"\s*version\s*=\s*"([^"]+)"',
+        re.MULTILINE | re.DOTALL,
+    )
+
+    old_packages = dict(package_pattern.findall(old_content))
+    new_packages = dict(package_pattern.findall(new_content))
+
+    return _compute_package_diff(old_packages, new_packages)
+
+
+def _parse_requirements_diff(old_content: str, new_content: str) -> list[str]:
+    """Parse requirements.txt file diff for dependency changes."""
+    import re
+
+    # Simple pattern for package==version
+    package_pattern = re.compile(r"^([a-zA-Z0-9_-]+)==([^\s]+)", re.MULTILINE)
+
+    old_packages = dict(package_pattern.findall(old_content))
+    new_packages = dict(package_pattern.findall(new_content))
+
+    return _compute_package_diff(old_packages, new_packages)
 
 
 # =============================================================================
@@ -297,6 +443,8 @@ def is_git_cliff_available() -> bool:
 def format_commit_entry(
     parsed_commit: ParsedCommit,
     config: ChangelogConfig,
+    *,
+    first_time_contributors: set[str] | None = None,
 ) -> str:
     """Format a single commit entry for the changelog.
 
@@ -314,16 +462,20 @@ def format_commit_entry(
     Args:
         parsed_commit: The parsed commit to format
         config: Changelog configuration
+        first_time_contributors: Set of author names who are first-time contributors
 
     Returns:
         Formatted commit entry string
     """
     pc = parsed_commit
     commit = pc.commit
+    is_first_timer = (
+        first_time_contributors is not None and commit.author_name in first_time_contributors
+    )
 
     # If custom template is provided, use it
     if config.commit_template:
-        return _apply_commit_template(
+        entry = _apply_commit_template(
             template=config.commit_template,
             description=pc.description,
             scope=pc.scope or "",
@@ -332,6 +484,10 @@ def format_commit_entry(
             body=commit.body or "",
             commit_type=pc.commit_type or "other",
         )
+        # Add first-time contributor badge if applicable
+        if config.show_first_time_contributors and is_first_timer:
+            entry = f"{entry} {config.first_contributor_badge}"
+        return entry
 
     # Default formatting
     parts = []
@@ -354,6 +510,10 @@ def format_commit_entry(
     # Add commit hash if enabled
     if config.show_commit_hash:
         parts.append(f" ({commit.short_sha})")
+
+    # Add first-time contributor badge if enabled and applicable
+    if config.show_first_time_contributors and is_first_timer:
+        parts.append(f" {config.first_contributor_badge}")
 
     return "".join(parts)
 
@@ -395,6 +555,9 @@ def generate_native_changelog(
     parsed_commits: list[ParsedCommit],
     version: Version,
     config: ChangelogConfig,
+    *,
+    first_time_contributors: set[str] | None = None,
+    dependency_updates: list[str] | None = None,
 ) -> str:
     """Generate changelog natively without git-cliff.
 
@@ -405,6 +568,8 @@ def generate_native_changelog(
         parsed_commits: List of parsed commits
         version: Version being released
         config: Changelog configuration
+        first_time_contributors: Set of author names who are first-time contributors
+        dependency_updates: List of dependency update strings to include
 
     Returns:
         Generated changelog content as string
@@ -426,6 +591,11 @@ def generate_native_changelog(
     # Build changelog content
     lines: list[str] = []
 
+    # Add custom header if configured
+    if config.header:
+        lines.append(config.header.rstrip())
+        lines.append("")
+
     # Header with version and date
     today = datetime.now(tz=UTC).strftime("%Y-%m-%d")
     lines.append(f"## [{version}] - {today}")
@@ -437,7 +607,7 @@ def generate_native_changelog(
         lines.append(f"### {header}")
         lines.append("")
         for pc in breaking:
-            entry = format_commit_entry(pc, config)
+            entry = format_commit_entry(pc, config, first_time_contributors=first_time_contributors)
             lines.append(f"- {entry}")
         lines.append("")
 
@@ -464,7 +634,7 @@ def generate_native_changelog(
         lines.append(f"### {header}")
         lines.append("")
         for pc in commits:
-            entry = format_commit_entry(pc, config)
+            entry = format_commit_entry(pc, config, first_time_contributors=first_time_contributors)
             lines.append(f"- {entry}")
         lines.append("")
 
@@ -477,7 +647,7 @@ def generate_native_changelog(
         lines.append(f"### {header}")
         lines.append("")
         for pc in commits:
-            entry = format_commit_entry(pc, config)
+            entry = format_commit_entry(pc, config, first_time_contributors=first_time_contributors)
             lines.append(f"- {entry}")
         lines.append("")
 
@@ -488,8 +658,15 @@ def generate_native_changelog(
         lines.append(f"### {header}")
         lines.append("")
         for pc in other_commits:
-            entry = format_commit_entry(pc, config)
+            entry = format_commit_entry(pc, config, first_time_contributors=first_time_contributors)
             lines.append(f"- {entry}")
+        lines.append("")
+
+    # Dependency updates section (if enabled and updates available)
+    if config.include_dependency_updates and dependency_updates:
+        lines.append("### 📦 Dependencies")
+        lines.append("")
+        lines.extend(f"- {update}" for update in dependency_updates)
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"

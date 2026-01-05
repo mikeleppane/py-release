@@ -573,3 +573,61 @@ class GitRepository:
             usernames.add(match.group(1))
 
         return sorted(usernames, key=str.lower)
+
+    def get_authors_before_date(self, before_date: datetime) -> set[str]:
+        """Get all commit authors before a given date.
+
+        Args:
+            before_date: Date to get authors before.
+
+        Returns:
+            Set of unique author names.
+        """
+        # Format date as ISO 8601
+        date_str = before_date.isoformat()
+
+        result = self._run(
+            [
+                "log",
+                "--format=%an",
+                f"--before={date_str}",
+            ],
+            check=False,
+        )
+
+        authors: set[str] = set()
+        for line in result.stdout.strip().split("\n"):
+            if line.strip():
+                authors.add(line.strip())
+
+        return authors
+
+    def get_file_at_ref(self, file_path: str, ref: str) -> str | None:
+        """Get the content of a file at a specific git ref.
+
+        Args:
+            file_path: Path to the file relative to repo root.
+            ref: Git ref (tag, branch, or commit SHA).
+
+        Returns:
+            File content as string, or None if file doesn't exist at ref.
+        """
+        result = self._run(
+            ["show", f"{ref}:{file_path}"],
+            check=False,
+        )
+
+        if result.returncode != 0:
+            return None
+
+        return result.stdout
+
+    @property
+    def timestamp(self) -> datetime:
+        """Get the timestamp of the HEAD commit.
+
+        Returns:
+            Timestamp of the HEAD commit.
+        """
+        result = self._run(["log", "-1", "--format=%aI"])
+        return datetime.fromisoformat(result.stdout.strip())
