@@ -1,5 +1,5 @@
 name: 'releasio-action'
-description: 'Automated releases for Python projects - handles versioning, changelogs, and publishing'
+description: 'Automated releases for Python projects - handles versioning, changelogs, and publishing. Supports custom config files (.releasio.toml, releasio.toml, pyproject.toml).'
 author: 'Mikko Leppanen'
 
 branding:
@@ -12,6 +12,7 @@ inputs:
       Command to run:
       - release-pr: Create/update a release pull request
       - release: Tag, publish to PyPI, and create GitHub release
+      - do-release: Complete workflow - update + commit + tag + publish (recommended)
       - check: Preview what would happen (dry-run)
       - check-pr: Validate PR title follows conventional commits
       - update: Update version and changelog locally
@@ -104,7 +105,7 @@ runs:
     - name: Validate inputs
       shell: bash
       run: |
-        VALID_COMMANDS="release-pr release check check-pr update init"
+        VALID_COMMANDS="release-pr release do-release check check-pr update init"
         COMMAND="${{ inputs.command }}"
         if [[ ! " $VALID_COMMANDS " =~ " $COMMAND " ]]; then
           echo "::error::Invalid command '$COMMAND'. Must be one of: $VALID_COMMANDS"
@@ -170,6 +171,22 @@ runs:
             fi
             ;;
 
+          do-release)
+            # do-release uses --execute to apply changes (default is dry-run)
+            if [[ "${{ inputs.execute }}" == "true" ]]; then
+              CMD="$CMD --execute"
+            fi
+            if [[ "${{ inputs.skip-publish }}" == "true" ]]; then
+              CMD="$CMD --skip-publish"
+            fi
+            if [[ -n "${{ inputs.prerelease }}" ]]; then
+              CMD="$CMD --prerelease ${{ inputs.prerelease }}"
+            fi
+            if [[ -n "${{ inputs.version-override }}" ]]; then
+              CMD="$CMD --version ${{ inputs.version-override }}"
+            fi
+            ;;
+
           update)
             # update command uses --execute to apply changes (default is dry-run)
             if [[ "${{ inputs.execute }}" == "true" ]]; then
@@ -222,7 +239,7 @@ runs:
             fi
             ;;
 
-          release)
+          release|do-release)
             # Extract release URL
             release_url=$(echo "$output" | grep -oE 'https://github\.com/[^/]+/[^/]+/releases/tag/[^\s]+' | head -1 || true)
             if [[ -n "$release_url" ]]; then
