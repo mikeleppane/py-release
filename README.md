@@ -52,6 +52,24 @@ pip install releasio
 pipx install releasio
 ```
 
+### Prerequisites: git-cliff
+
+releasio requires [git-cliff](https://git-cliff.org/) for changelog generation. **This must be installed separately** as it's a Rust binary:
+
+```bash
+# Using uv (recommended)
+uv tool install git-cliff
+
+# Using cargo (if you have Rust installed)
+cargo install git-cliff
+
+# Using Homebrew (macOS/Linux)
+brew install git-cliff
+
+# Using scoop (Windows)
+scoop install git-cliff
+```
+
 ## Quick Start
 
 ```bash
