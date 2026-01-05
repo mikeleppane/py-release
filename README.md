@@ -132,6 +132,16 @@ releasio check-pr --require-scope      # Require scope in PR title
 
 releasio provides a GitHub Action for seamless CI/CD integration.
 
+### Required Repository Settings
+
+Before using releasio in GitHub Actions, enable this setting:
+
+1. Go to **Settings → Actions → General → Workflow permissions**
+2. Enable **"Allow GitHub Actions to create and approve pull requests"**
+3. Click **Save**
+
+This allows the `GITHUB_TOKEN` to create release PRs.
+
 ### Recommended Workflow
 
 Create `.github/workflows/release.yml`:
