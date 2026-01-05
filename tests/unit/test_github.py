@@ -438,6 +438,23 @@ class TestGitHubClientReleases:
             result = await client.get_release_by_tag("v99.0.0")
             assert result is None
 
+    def test_parse_release_empty_response_raises(self):
+        """Empty response raises ForgeError."""
+        client = GitHubClient(owner="owner", repo="repo", token="test-token")
+
+        with pytest.raises(ForgeError, match="empty response"):
+            client._parse_release({})
+
+    def test_parse_release_missing_fields_raises(self):
+        """Missing required fields raises ForgeError with field names."""
+        client = GitHubClient(owner="owner", repo="repo", token="test-token")
+
+        # Missing tag_name and html_url
+        incomplete_response = {"name": "v1.0.0"}
+
+        with pytest.raises(ForgeError, match=r"tag_name.*html_url"):
+            client._parse_release(incomplete_response)
+
 
 class TestRateLimitRetry:
     """Tests for rate limit handling and retry logic."""

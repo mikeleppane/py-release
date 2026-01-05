@@ -390,7 +390,29 @@ class GitHubClient:
         return self._parse_release(data)
 
     def _parse_release(self, data: dict[str, Any]) -> Release:
-        """Parse API response into Release."""
+        """Parse API response into Release.
+
+        Args:
+            data: JSON response from GitHub API
+
+        Returns:
+            Parsed Release object
+
+        Raises:
+            ForgeError: If required fields are missing from response
+        """
+        # Validate required fields exist
+        if not data:
+            raise ForgeError("GitHub API returned empty response for release")
+
+        required_fields = ["tag_name", "name", "html_url"]
+        missing = [f for f in required_fields if f not in data]
+        if missing:
+            raise ForgeError(
+                f"GitHub API response missing required fields: {', '.join(missing)}. "
+                f"Response: {data}"
+            )
+
         assets = [asset["browser_download_url"] for asset in data.get("assets", [])]
 
         return Release(

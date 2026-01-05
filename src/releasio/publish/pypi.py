@@ -256,9 +256,19 @@ def _publish_with_uv(
 
     Supports trusted publishing (OIDC) when running in GitHub Actions.
     Uses --trusted-publishing flag based on config and environment.
+
+    Token precedence:
+    1. UV_PUBLISH_TOKEN (uv's native env var)
+    2. PYPI_TOKEN (common convention, mapped to UV_PUBLISH_TOKEN)
+    3. Trusted publishing (OIDC) if available
     """
     if shutil.which("uv") is None:
         raise PublishError("uv not found. Install with: pip install uv")
+
+    # Prepare environment - map PYPI_TOKEN to UV_PUBLISH_TOKEN if needed
+    env = os.environ.copy()
+    if "UV_PUBLISH_TOKEN" not in env and "PYPI_TOKEN" in env:
+        env["UV_PUBLISH_TOKEN"] = env["PYPI_TOKEN"]
 
     cmd = ["uv", "publish"]
 
@@ -286,6 +296,7 @@ def _publish_with_uv(
             with console.status("[bold blue]Publishing to PyPI...", spinner="dots"):
                 subprocess.run(
                     cmd,
+                    env=env,
                     capture_output=True,
                     text=True,
                     check=True,
@@ -293,6 +304,7 @@ def _publish_with_uv(
         else:
             subprocess.run(
                 cmd,
+                env=env,
                 capture_output=True,
                 text=True,
                 check=True,

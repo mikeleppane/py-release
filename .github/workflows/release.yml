@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  # Manual trigger for one-off releases
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 'Release command to run'
+        required: true
+        type: choice
+        options:
+          - do-release
+          - release-pr
+          - check
+        default: 'check'
+      execute:
+        description: 'Execute changes (not dry-run)'
+        required: true
+        type: boolean
+        default: false
+
+  # Auto-create release PR when pushing to main
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write  # Required for PyPI trusted publishing
+
+jobs:
+  # Auto-create/update release PR on push to main
+  release-pr:
+    name: Create Release PR
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run releasio release-pr
+        uses: ./
+        with:
+          command: release-pr
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Manual release workflow
+  manual-release:
+    name: Manual Release
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run releasio
+        uses: ./
+        with:
+          command: ${{ inputs.command }}
+          execute: ${{ inputs.execute }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # PyPI token only needed if not using trusted publishing
+          # pypi-token: ${{ secrets.PYPI_TOKEN }}
+
+  # Release when release PR is merged (detected by release commit message)
+  auto-release:
+    name: Auto Release
+    if: |
+      github.event_name == 'push' &&
+      startsWith(github.event.head_commit.message, 'chore(release):')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run releasio release
+        uses: ./
+        with:
+          command: release
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # PyPI token only needed if not using trusted publishing
+          # pypi-token: ${{ secrets.PYPI_TOKEN }}
