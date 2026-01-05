@@ -1,8 +1,10 @@
-"""Configuration loading from pyproject.toml."""
+"""Configuration loading from pyproject.toml and custom config files."""
 
 from __future__ import annotations
 
 import tomllib
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +12,23 @@ from pydantic import ValidationError
 
 from release_py.config.models import ReleasePyConfig
 from release_py.exceptions import ConfigNotFoundError, ConfigValidationError
+
+
+class ConfigSource(Enum):
+    """Source of configuration data."""
+
+    DOTFILE = ".releasio.toml"
+    VISIBLE = "releasio.toml"
+    PYPROJECT = "pyproject.toml"
+
+
+@dataclass(frozen=True)
+class ConfigPaths:
+    """Paths to configuration files."""
+
+    config_file: Path  # The releasio config file
+    config_source: ConfigSource
+    pyproject_file: Path  # Always needed for project metadata
 
 
 def find_pyproject_toml(start_path: Path | None = None) -> Path:
@@ -42,11 +61,76 @@ def find_pyproject_toml(start_path: Path | None = None) -> Path:
     )
 
 
-def load_pyproject_toml(path: Path) -> dict[str, Any]:
-    """Load and parse pyproject.toml.
+def find_releasio_config(start_path: Path) -> ConfigPaths | None:
+    """Find releasio configuration files.
+
+    Searches in the following order:
+    1. .releasio.toml (in start_path only)
+    2. releasio.toml (in start_path only)
+    3. pyproject.toml (walks up tree - existing behavior)
 
     Args:
-        path: Path to pyproject.toml
+        start_path: Directory to search for config
+
+    Returns:
+        ConfigPaths with config file and pyproject.toml paths,
+        or None if no configuration found
+
+    Raises:
+        ConfigNotFoundError: If custom config found but no pyproject.toml
+    """
+    # Check for dotfile first (highest precedence)
+    dotfile = start_path / ".releasio.toml"
+    if dotfile.is_file():
+        # Must also find pyproject.toml for project metadata
+        try:
+            pyproject_path = find_pyproject_toml(start_path)
+            return ConfigPaths(
+                config_file=dotfile,
+                config_source=ConfigSource.DOTFILE,
+                pyproject_file=pyproject_path,
+            )
+        except ConfigNotFoundError as e:
+            raise ConfigNotFoundError(
+                f"Found {dotfile.name} but no pyproject.toml for project metadata. "
+                "releasio requires pyproject.toml for project name and version. "
+                f"Original error: {e}"
+            ) from e
+
+    # Check for visible file (medium precedence)
+    visible = start_path / "releasio.toml"
+    if visible.is_file():
+        try:
+            pyproject_path = find_pyproject_toml(start_path)
+            return ConfigPaths(
+                config_file=visible,
+                config_source=ConfigSource.VISIBLE,
+                pyproject_file=pyproject_path,
+            )
+        except ConfigNotFoundError as e:
+            raise ConfigNotFoundError(
+                f"Found {visible.name} but no pyproject.toml for project metadata. "
+                "releasio requires pyproject.toml for project name and version. "
+                f"Original error: {e}"
+            ) from e
+
+    # Fall back to pyproject.toml (walks up tree)
+    try:
+        pyproject_path = find_pyproject_toml(start_path)
+        return ConfigPaths(
+            config_file=pyproject_path,
+            config_source=ConfigSource.PYPROJECT,
+            pyproject_file=pyproject_path,
+        )
+    except ConfigNotFoundError:
+        return None
+
+
+def load_toml_file(path: Path) -> dict[str, Any]:
+    """Load and parse a TOML file.
+
+    Args:
+        path: Path to TOML file
 
     Returns:
         Parsed TOML as dictionary
@@ -65,8 +149,56 @@ def load_pyproject_toml(path: Path) -> dict[str, Any]:
         raise ConfigValidationError(f"Invalid TOML in {path}: {e}") from e
 
 
+def load_pyproject_toml(path: Path) -> dict[str, Any]:
+    """Load and parse pyproject.toml.
+
+    Deprecated: Use load_toml_file() for general TOML loading.
+    Kept for backward compatibility.
+
+    Args:
+        path: Path to pyproject.toml
+
+    Returns:
+        Parsed TOML as dictionary
+
+    Raises:
+        ConfigNotFoundError: If file doesn't exist
+        ConfigValidationError: If TOML parsing fails
+    """
+    return load_toml_file(path)
+
+
+def extract_releasio_config(toml_data: dict[str, Any], source: ConfigSource) -> dict[str, Any]:
+    """Extract releasio configuration from TOML data.
+
+    For custom config files (.releasio.toml, releasio.toml):
+        - Config is at top-level (no [tool.releasio] wrapper)
+
+    For pyproject.toml:
+        - Config is under [tool.releasio] section (existing behavior)
+
+    Args:
+        toml_data: Parsed TOML data
+        source: Source type of the configuration
+
+    Returns:
+        The releasio configuration dict (empty if not present)
+    """
+    if source in (ConfigSource.DOTFILE, ConfigSource.VISIBLE):
+        # Custom config files: top-level keys are releasio config
+        return toml_data
+
+    # pyproject.toml: extract from [tool.releasio]
+    tool: dict[str, Any] = toml_data.get("tool", {})
+    result: dict[str, Any] = tool.get("releasio", {})
+    return result
+
+
 def extract_release_py_config(pyproject: dict[str, Any]) -> dict[str, Any]:
     """Extract [tool.releasio] section from pyproject.toml data.
+
+    Deprecated: Use extract_releasio_config() with ConfigSource.
+    Kept for backward compatibility.
 
     Args:
         pyproject: Parsed pyproject.toml data
@@ -74,51 +206,101 @@ def extract_release_py_config(pyproject: dict[str, Any]) -> dict[str, Any]:
     Returns:
         The releasio configuration dict (empty if not present)
     """
-    tool: dict[str, Any] = pyproject.get("tool", {})
-    result: dict[str, Any] = tool.get("releasio", {})
-    return result
+    return extract_releasio_config(pyproject, ConfigSource.PYPROJECT)
 
 
 def load_config(path: Path | None = None) -> ReleasePyConfig:
-    """Load releasio configuration from pyproject.toml.
+    """Load releasio configuration.
 
-    Configuration is read from [tool.releasio] section.
-    Missing config uses sensible defaults.
+    Configuration is searched in this order:
+    1. .releasio.toml (dotfile, in specified directory)
+    2. releasio.toml (visible file, in specified directory)
+    3. pyproject.toml under [tool.releasio] (walks up tree)
+
+    Custom config files contain only releasio settings (no [tool] wrapper).
+    pyproject.toml is always required for project name/version metadata.
 
     Args:
-        path: Path to pyproject.toml, or directory to search from.
+        path: Path to config file, or directory to search from.
               If None, searches from current directory.
 
     Returns:
         Validated configuration
 
     Raises:
-        ConfigNotFoundError: If pyproject.toml not found
+        ConfigNotFoundError: If no configuration found
         ConfigValidationError: If configuration is invalid
-    """
-    # Determine the pyproject.toml path
-    if path is None:
-        pyproject_path = find_pyproject_toml()
-    elif path.is_dir():
-        pyproject_path = find_pyproject_toml(path)
-    else:
-        pyproject_path = path
 
-    # Load and parse
-    pyproject_data = load_pyproject_toml(pyproject_path)
-    config_data = extract_release_py_config(pyproject_data)
+    Examples:
+        >>> # Auto-discover from current directory
+        >>> config = load_config()
+
+        >>> # Load from specific directory
+        >>> config = load_config(Path("/path/to/project"))
+
+        >>> # Load specific config file
+        >>> config = load_config(Path("/path/to/.releasio.toml"))
+    """
+    start_path = (path or Path.cwd()).resolve()
+
+    # Handle direct file path
+    if start_path.is_file():
+        # User specified exact config file
+        if start_path.name in (".releasio.toml", "releasio.toml"):
+            # Custom config file
+            if start_path.name == ".releasio.toml":
+                source = ConfigSource.DOTFILE
+            else:
+                source = ConfigSource.VISIBLE
+            config_data = load_toml_file(start_path)
+
+            # Still need pyproject.toml for project metadata
+            try:
+                # Just verify it exists
+                find_pyproject_toml(start_path.parent)
+            except ConfigNotFoundError as e:
+                raise ConfigNotFoundError(
+                    f"Found {start_path.name} but no pyproject.toml for project metadata. "
+                    "releasio requires pyproject.toml for project name and version."
+                ) from e
+
+        elif start_path.name == "pyproject.toml":
+            # pyproject.toml specified directly
+            source = ConfigSource.PYPROJECT
+            config_data = load_toml_file(start_path)
+        else:
+            raise ConfigValidationError(
+                f"Unsupported config file: {start_path.name}. "
+                "Expected .releasio.toml, releasio.toml, or pyproject.toml"
+            )
+    else:
+        # Directory path: discover config
+        config_paths = find_releasio_config(start_path)
+        if not config_paths:
+            raise ConfigNotFoundError(
+                f"No releasio configuration found in {start_path} or parent directories. "
+                "Expected .releasio.toml, releasio.toml, or [tool.releasio] in pyproject.toml"
+            )
+
+        config_data = load_toml_file(config_paths.config_file)
+        source = config_paths.config_source
+
+    # Extract releasio config based on source
+    releasio_data = extract_releasio_config(config_data, source)
 
     # Validate and return
     try:
-        return ReleasePyConfig.model_validate(config_data)
+        return ReleasePyConfig.model_validate(releasio_data)
     except ValidationError as e:
         errors = []
         for error in e.errors():
             loc = ".".join(str(x) for x in error["loc"])
             msg = error["msg"]
             errors.append(f"  - {loc}: {msg}")
+
+        config_file_name = start_path.name if start_path.is_file() else source.value
         raise ConfigValidationError(
-            f"Invalid configuration in {pyproject_path}:\n" + "\n".join(errors)
+            f"Invalid configuration in {config_file_name}:\n" + "\n".join(errors)
         ) from e
 
 

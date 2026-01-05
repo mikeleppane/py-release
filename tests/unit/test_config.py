@@ -615,3 +615,220 @@ class TestChangelogConfigNativeFallback:
         config = ChangelogConfig(native_fallback=False)
 
         assert config.native_fallback is False
+
+
+class TestFindReleasioConfig:
+    """Tests for find_releasio_config()."""
+
+    def test_finds_dotfile_first(self, tmp_path: Path):
+        """Finds .releasio.toml with highest precedence."""
+        # Create all three files
+        (tmp_path / ".releasio.toml").write_text("default_branch = 'dotfile'")
+        (tmp_path / "releasio.toml").write_text("default_branch = 'visible'")
+        (tmp_path / "pyproject.toml").write_text("""
+[project]
+name = "test"
+version = "1.0.0"
+
+[tool.releasio]
+default_branch = "pyproject"
+""")
+
+        from release_py.config.loader import ConfigSource, find_releasio_config
+
+        config_paths = find_releasio_config(tmp_path)
+        assert config_paths is not None
+        assert config_paths.config_source == ConfigSource.DOTFILE
+        assert config_paths.config_file.name == ".releasio.toml"
+
+    def test_finds_visible_when_no_dotfile(self, tmp_path: Path):
+        """Finds releasio.toml when .releasio.toml absent."""
+        (tmp_path / "releasio.toml").write_text("default_branch = 'visible'")
+        (tmp_path / "pyproject.toml").write_text("""
+[project]
+name = "test"
+version = "1.0.0"
+""")
+
+        from release_py.config.loader import ConfigSource, find_releasio_config
+
+        config_paths = find_releasio_config(tmp_path)
+        assert config_paths is not None
+        assert config_paths.config_source == ConfigSource.VISIBLE
+
+    def test_falls_back_to_pyproject(self, tmp_path: Path):
+        """Falls back to pyproject.toml when no custom config."""
+        (tmp_path / "pyproject.toml").write_text("""
+[project]
+name = "test"
+version = "1.0.0"
+
+[tool.releasio]
+default_branch = "main"
+""")
+
+        from release_py.config.loader import ConfigSource, find_releasio_config
+
+        config_paths = find_releasio_config(tmp_path)
+        assert config_paths is not None
+        assert config_paths.config_source == ConfigSource.PYPROJECT
+
+    def test_custom_config_without_pyproject_raises(self, tmp_path: Path):
+        """Error when custom config exists but no pyproject.toml."""
+        (tmp_path / ".releasio.toml").write_text("default_branch = 'main'")
+
+        from release_py.config.loader import find_releasio_config
+
+        with pytest.raises(ConfigNotFoundError, match=r"no pyproject\.toml"):
+            find_releasio_config(tmp_path)
+
+    def test_no_config_returns_none(self, tmp_path: Path):
+        """Returns None when no config files found."""
+        from release_py.config.loader import find_releasio_config
+
+        result = find_releasio_config(tmp_path)
+        assert result is None
+
+
+class TestExtractReleasioConfig:
+    """Tests for extract_releasio_config()."""
+
+    def test_extract_from_custom_config_top_level(self):
+        """Extract from custom config (top-level keys)."""
+        from release_py.config.loader import ConfigSource, extract_releasio_config
+
+        data = {
+            "default_branch": "develop",
+            "commits": {"types_minor": ["feat"]},
+        }
+
+        result = extract_releasio_config(data, ConfigSource.DOTFILE)
+        assert result["default_branch"] == "develop"
+        assert result["commits"]["types_minor"] == ["feat"]
+
+    def test_extract_from_pyproject_nested(self):
+        """Extract from pyproject.toml ([tool.releasio])."""
+        from release_py.config.loader import ConfigSource, extract_releasio_config
+
+        data = {
+            "project": {"name": "test"},
+            "tool": {"releasio": {"default_branch": "main"}},
+        }
+
+        result = extract_releasio_config(data, ConfigSource.PYPROJECT)
+        assert result["default_branch"] == "main"
+
+    def test_extract_empty_from_pyproject_no_section(self):
+        """Returns empty dict when [tool.releasio] missing."""
+        from release_py.config.loader import ConfigSource, extract_releasio_config
+
+        data = {"project": {"name": "test"}}
+
+        result = extract_releasio_config(data, ConfigSource.PYPROJECT)
+        assert result == {}
+
+
+class TestLoadConfigCustomFiles:
+    """Tests for load_config() with custom config files."""
+
+    def test_load_from_dotfile(self, tmp_path: Path):
+        """Load configuration from .releasio.toml."""
+        (tmp_path / ".releasio.toml").write_text("""
+default_branch = "develop"
+
+[commits]
+types_minor = ["feat", "feature"]
+""")
+        (tmp_path / "pyproject.toml").write_text("""
+[project]
+name = "test"
+version = "1.0.0"
+""")
+
+        from release_py.config import load_config
+
+        config = load_config(tmp_path)
+        assert config.default_branch == "develop"
+        assert config.commits.types_minor == ["feat", "feature"]
+
+    def test_load_from_visible_file(self, tmp_path: Path):
+        """Load configuration from releasio.toml."""
+        (tmp_path / "releasio.toml").write_text("""
+default_branch = "main"
+allow_dirty = true
+""")
+        (tmp_path / "pyproject.toml").write_text("""
+[project]
+name = "test"
+version = "1.0.0"
+""")
+
+        from release_py.config import load_config
+
+        config = load_config(tmp_path)
+        assert config.allow_dirty is True
+
+    def test_precedence_dotfile_over_pyproject(self, tmp_path: Path):
+        """Dotfile has precedence over pyproject.toml."""
+        (tmp_path / ".releasio.toml").write_text('default_branch = "dotfile"')
+        (tmp_path / "pyproject.toml").write_text("""
+[project]
+name = "test"
+version = "1.0.0"
+
+[tool.releasio]
+default_branch = "pyproject"
+""")
+
+        from release_py.config import load_config
+
+        config = load_config(tmp_path)
+        assert config.default_branch == "dotfile"
+
+    def test_direct_file_path_dotfile(self, tmp_path: Path):
+        """Load from direct .releasio.toml path."""
+        config_file = tmp_path / ".releasio.toml"
+        config_file.write_text("default_branch = 'staging'")
+        (tmp_path / "pyproject.toml").write_text("""
+[project]
+name = "test"
+version = "1.0.0"
+""")
+
+        from release_py.config import load_config
+
+        config = load_config(config_file)
+        assert config.default_branch == "staging"
+
+    def test_invalid_toml_raises(self, tmp_path: Path):
+        """Invalid TOML syntax raises ConfigValidationError."""
+        (tmp_path / ".releasio.toml").write_text("invalid toml [[[")
+        (tmp_path / "pyproject.toml").write_text("""
+[project]
+name = "test"
+version = "1.0.0"
+""")
+
+        from release_py.config import load_config
+
+        with pytest.raises(ConfigValidationError, match="Invalid TOML"):
+            load_config(tmp_path)
+
+    def test_custom_config_without_pyproject_errors(self, tmp_path: Path):
+        """Custom config without pyproject.toml raises error."""
+        (tmp_path / ".releasio.toml").write_text("default_branch = 'main'")
+
+        from release_py.config import load_config
+
+        with pytest.raises(ConfigNotFoundError, match=r"no pyproject\.toml"):
+            load_config(tmp_path)
+
+    def test_unsupported_file_type_raises(self, tmp_path: Path):
+        """Unsupported config file type raises error."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("default_branch: main")
+
+        from release_py.config import load_config
+
+        with pytest.raises(ConfigValidationError, match="Unsupported config file"):
+            load_config(config_file)

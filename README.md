@@ -216,7 +216,55 @@ jobs:
 
 Configuration is optional. releasio works out of the box with sensible defaults.
 
-Add to `pyproject.toml` if you need to customize:
+### Custom Configuration Files
+
+releasio supports standalone TOML configuration files in addition to `pyproject.toml`. This is useful for projects that prefer dedicated config files or need monorepo-style configurations.
+
+**Configuration file precedence** (highest to lowest):
+
+1. `.releasio.toml` (dotfile, hidden)
+2. `releasio.toml` (visible file)
+3. `pyproject.toml` under `[tool.releasio]` section
+
+Create a `.releasio.toml` or `releasio.toml` file in your project root:
+
+```toml
+# .releasio.toml
+# Note: Custom config files use flattened structure (no [tool.releasio] wrapper)
+
+default_branch = "main"
+
+[version]
+tag_prefix = "v"
+
+[commits]
+types_minor = ["feat"]
+types_patch = ["fix", "perf", "docs"]
+
+[changelog]
+path = "CHANGELOG.md"
+use_github_prs = false
+
+[github]
+release_pr_labels = ["release"]
+draft_releases = false
+
+[publish]
+tool = "uv"
+trusted_publishing = true
+```
+
+**Important notes:**
+
+- Custom config files (`.releasio.toml` and `releasio.toml`) use **top-level keys** (no `[tool.releasio]` wrapper)
+- You still need `pyproject.toml` for project metadata (name, version)
+- Custom configs are only searched in the current directory
+- `pyproject.toml` configs walk up the directory tree (existing behavior)
+- See [`.releasio.toml.example`](.releasio.toml.example) for a complete example
+
+### pyproject.toml Configuration
+
+Add to `pyproject.toml` if you prefer traditional configuration:
 
 ```toml
 [tool.releasio]
