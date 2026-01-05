@@ -157,14 +157,16 @@ runs:
         # Add command-specific options
         case "${{ inputs.command }}" in
           release-pr)
-            if [[ "${{ inputs.dry-run }}" == "true" ]]; then
-              CMD="$CMD --dry-run"
+            # release-pr defaults to dry-run, needs --execute to actually create PR
+            if [[ "${{ inputs.dry-run }}" != "true" ]]; then
+              CMD="$CMD --execute"
             fi
             ;;
 
           release)
-            if [[ "${{ inputs.dry-run }}" == "true" ]]; then
-              CMD="$CMD --dry-run"
+            # release defaults to dry-run, needs --execute to actually release
+            if [[ "${{ inputs.dry-run }}" != "true" ]]; then
+              CMD="$CMD --execute"
             fi
             if [[ "${{ inputs.skip-publish }}" == "true" ]]; then
               CMD="$CMD --skip-publish"
