@@ -122,7 +122,7 @@ Before pushing, ensure all checks pass:
 uv run pre-commit run --all-files
 
 # Run tests with coverage
-uv run pytest --cov=src/release_py --cov-report=term-missing
+uv run pytest --cov=src/releasio --cov-report=term-missing
 
 # Run type checking
 uv run mypy src/
@@ -171,7 +171,7 @@ def calculate_version(commits, current):
 uv run pytest
 
 # Run with coverage
-uv run pytest --cov=src/release_py --cov-report=term-missing
+uv run pytest --cov=src/releasio --cov-report=term-missing
 
 # Run specific test file
 uv run pytest tests/test_version.py

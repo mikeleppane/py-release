@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from release_py.exceptions import ProjectNotFoundError, VersionNotFoundError
-from release_py.project.detector import detect_project, detect_workspace_packages
-from release_py.project.pyproject import (
+from releasio.exceptions import ProjectNotFoundError, VersionNotFoundError
+from releasio.project.detector import detect_project, detect_workspace_packages
+from releasio.project.pyproject import (
     get_pyproject_version,
     update_pyproject_version,
     update_version_file,
@@ -159,7 +159,7 @@ def main():
 
     def test_update_nonexistent_raises(self, tmp_path: Path):
         """Updating nonexistent file raises error."""
-        from release_py.exceptions import ProjectError
+        from releasio.exceptions import ProjectError
 
         with pytest.raises(ProjectError):
             update_version_file(tmp_path / "nonexistent.py", "2.0.0")

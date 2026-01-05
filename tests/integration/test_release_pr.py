@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from release_py.cli.app import app
-from release_py.forge.base import MergeRequest, MergeRequestState
+from releasio.cli.app import app
+from releasio.forge.base import MergeRequest, MergeRequestState
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -104,7 +104,7 @@ class TestReleasePrExecution:
 
     def test_release_pr_creates_branch(self, pr_ready_repo: Path):
         """Release-pr creates release branch."""
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.find_pull_request = AsyncMock(return_value=None)
             mock_client.create_pull_request = AsyncMock(
@@ -121,11 +121,11 @@ class TestReleasePrExecution:
             )
             mock_github.return_value = mock_client
 
-            with patch("release_py.core.changelog.generate_changelog") as mock_cl:
+            with patch("releasio.core.changelog.generate_changelog") as mock_cl:
                 mock_cl.return_value = "## [1.1.0]\n\n- Feature"
 
                 # Mock git push to avoid actual network call
-                with patch("release_py.vcs.git.GitRepository.push"):
+                with patch("releasio.vcs.git.GitRepository.push"):
                     result = runner.invoke(app, ["release-pr", str(pr_ready_repo), "--execute"])
 
                     # Check branch was created
@@ -142,7 +142,7 @@ class TestReleasePrExecution:
 
     def test_release_pr_updates_version(self, pr_ready_repo: Path):
         """Release-pr updates version in pyproject.toml."""
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.find_pull_request = AsyncMock(return_value=None)
             mock_client.create_pull_request = AsyncMock(
@@ -159,10 +159,10 @@ class TestReleasePrExecution:
             )
             mock_github.return_value = mock_client
 
-            with patch("release_py.core.changelog.generate_changelog") as mock_cl:
+            with patch("releasio.core.changelog.generate_changelog") as mock_cl:
                 mock_cl.return_value = "## [1.1.0]\n\n- Feature"
 
-                with patch("release_py.vcs.git.GitRepository.push"):
+                with patch("releasio.vcs.git.GitRepository.push"):
                     result = runner.invoke(app, ["release-pr", str(pr_ready_repo), "--execute"])
 
                     if result.exit_code == 0:
@@ -174,7 +174,7 @@ class TestReleasePrExecution:
 
     def test_release_pr_creates_pr(self, pr_ready_repo: Path):
         """Release-pr creates pull request via GitHub API."""
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.find_pull_request = AsyncMock(return_value=None)
             mock_client.create_pull_request = AsyncMock(
@@ -191,10 +191,10 @@ class TestReleasePrExecution:
             )
             mock_github.return_value = mock_client
 
-            with patch("release_py.core.changelog.generate_changelog") as mock_cl:
+            with patch("releasio.core.changelog.generate_changelog") as mock_cl:
                 mock_cl.return_value = "## [1.1.0]\n\n- Feature"
 
-                with patch("release_py.vcs.git.GitRepository.push"):
+                with patch("releasio.vcs.git.GitRepository.push"):
                     result = runner.invoke(app, ["release-pr", str(pr_ready_repo), "--execute"])
 
                     if result.exit_code == 0:
@@ -219,7 +219,7 @@ class TestReleasePrUpdate:
             labels=["release"],
         )
 
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.find_pull_request = AsyncMock(return_value=existing_pr)
             mock_client.update_pull_request = AsyncMock(
@@ -236,10 +236,10 @@ class TestReleasePrUpdate:
             )
             mock_github.return_value = mock_client
 
-            with patch("release_py.core.changelog.generate_changelog") as mock_cl:
+            with patch("releasio.core.changelog.generate_changelog") as mock_cl:
                 mock_cl.return_value = "## [1.1.0]\n\n- Feature"
 
-                with patch("release_py.vcs.git.GitRepository.push"):
+                with patch("releasio.vcs.git.GitRepository.push"):
                     result = runner.invoke(app, ["release-pr", str(pr_ready_repo), "--execute"])
 
                     if result.exit_code == 0:

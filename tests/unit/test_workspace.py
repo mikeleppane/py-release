@@ -9,8 +9,8 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-from release_py.config.models import PackagesConfig, ReleasePyConfig
-from release_py.project.workspace import (
+from releasio.config.models import PackagesConfig, ReleasePyConfig
+from releasio.project.workspace import (
     WorkspacePackage,
     detect_workspace,
     get_package_by_name,
@@ -140,7 +140,7 @@ class TestWorkspacePackage:
 
     def test_workspace_package_creation(self, tmp_path: Path):
         """Create WorkspacePackage instance."""
-        from release_py.project.detector import ProjectInfo
+        from releasio.project.detector import ProjectInfo
 
         info = ProjectInfo(
             name="test-package",
@@ -169,7 +169,7 @@ class TestGetPackageByName:
 
     def test_find_existing_package(self, tmp_path: Path):
         """Find package by name."""
-        from release_py.project.detector import ProjectInfo
+        from releasio.project.detector import ProjectInfo
 
         info1 = ProjectInfo(
             name="core",
@@ -201,7 +201,7 @@ class TestGetPackageByName:
 
     def test_package_not_found(self, tmp_path: Path):
         """Return None when package not found."""
-        from release_py.project.detector import ProjectInfo
+        from releasio.project.detector import ProjectInfo
 
         info = ProjectInfo(
             name="core",

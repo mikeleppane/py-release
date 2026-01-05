@@ -8,9 +8,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from release_py.config.models import PublishConfig
-from release_py.exceptions import BuildError, PublishError, UploadError
-from release_py.publish.pypi import (
+from releasio.config.models import PublishConfig
+from releasio.exceptions import BuildError, PublishError, UploadError
+from releasio.publish.pypi import (
     build_package,
     check_pypi_version_exists,
     publish_package,

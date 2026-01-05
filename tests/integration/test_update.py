@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from release_py.cli.app import app
+from releasio.cli.app import app
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -121,7 +121,7 @@ class TestUpdateExecute:
     def test_update_execute_updates_version(self, repo_with_feat_commit: Path):
         """Execute updates version in pyproject.toml."""
         # Mock changelog generation to avoid git-cliff dependency
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [1.1.0] - 2024-01-01\n\n- New feature"
 
             result = runner.invoke(app, ["update", str(repo_with_feat_commit), "--execute"])
@@ -137,7 +137,7 @@ class TestUpdateExecute:
 
     def test_update_execute_creates_changelog(self, repo_with_feat_commit: Path):
         """Execute creates/updates changelog file."""
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [1.1.0] - 2024-01-01\n\n### Features\n\n- New feature"
 
             result = runner.invoke(app, ["update", str(repo_with_feat_commit), "--execute"])
@@ -153,7 +153,7 @@ class TestUpdateExecute:
 
     def test_update_execute_fix_bump(self, repo_with_fix_commit: Path):
         """Fix commit triggers patch bump."""
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [1.0.1]"
 
             result = runner.invoke(app, ["update", str(repo_with_fix_commit), "--execute"])
@@ -166,7 +166,7 @@ class TestUpdateExecute:
 
     def test_update_execute_breaking_bump(self, repo_with_breaking_change: Path):
         """Breaking change triggers major bump."""
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [2.0.0]"
 
             result = runner.invoke(app, ["update", str(repo_with_breaking_change), "--execute"])
@@ -179,7 +179,7 @@ class TestUpdateExecute:
 
     def test_update_execute_shows_next_steps(self, repo_with_feat_commit: Path):
         """Execute shows next steps after completion."""
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [1.1.0]"
 
             result = runner.invoke(app, ["update", str(repo_with_feat_commit), "--execute"])
@@ -265,7 +265,7 @@ class TestUpdateAppendChangelog:
             capture_output=True,
         )
 
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [1.1.0] - 2024-02-01\n\n- New feature"
 
             result = runner.invoke(app, ["update", str(repo_with_feat_commit), "--execute"])
@@ -341,7 +341,7 @@ initial_version = "1.0.0"
 
     def test_first_release_uses_initial_version(self, repo_no_tags: Path):
         """First release uses config.version.initial_version (default 0.1.0)."""
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [0.1.0] - 2024-01-01\n\n- First release"
 
             result = runner.invoke(app, ["update", str(repo_no_tags), "--execute"])
@@ -356,7 +356,7 @@ initial_version = "1.0.0"
 
     def test_first_release_uses_custom_initial_version(self, repo_no_tags_custom_initial: Path):
         """First release uses custom initial_version from config."""
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [1.0.0] - 2024-01-01\n\n- First release"
 
             result = runner.invoke(app, ["update", str(repo_no_tags_custom_initial), "--execute"])
@@ -379,7 +379,7 @@ initial_version = "1.0.0"
 
     def test_first_release_with_prerelease(self, repo_no_tags: Path):
         """First release with --prerelease creates pre-release initial version."""
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [0.1.0a1] - 2024-01-01\n\n- Alpha release"
 
             result = runner.invoke(
@@ -394,7 +394,7 @@ initial_version = "1.0.0"
 
     def test_first_release_with_version_override(self, repo_no_tags: Path):
         """First release with --version override uses specified version."""
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [2.0.0] - 2024-01-01"
 
             result = runner.invoke(
@@ -409,7 +409,7 @@ initial_version = "1.0.0"
 
     def test_non_first_release_ignores_initial_version(self, repo_with_fix_commit: Path):
         """After first release, initial_version is not used."""
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [1.0.1]"
 
             result = runner.invoke(app, ["update", str(repo_with_fix_commit), "--execute"])
@@ -437,7 +437,7 @@ class TestGitHubRemoteWarning:
             capture_output=True,
         )
 
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [1.1.0]"
 
             result = runner.invoke(app, ["update", str(repo_with_feat_commit), "--execute"])

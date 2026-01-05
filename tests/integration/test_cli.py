@@ -7,7 +7,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from release_py.cli.app import app
+from releasio.cli.app import app
 
 runner = CliRunner()
 
@@ -394,7 +394,7 @@ class TestSquashMergeDetection:
                 capture_output=True,
             )
 
-        from release_py.cli.commands.init_cmd import _detect_squash_merge
+        from releasio.cli.commands.init_cmd import _detect_squash_merge
 
         assert _detect_squash_merge(temp_git_repo) is True
 
@@ -413,6 +413,6 @@ class TestSquashMergeDetection:
                 capture_output=True,
             )
 
-        from release_py.cli.commands.init_cmd import _detect_squash_merge
+        from releasio.cli.commands.init_cmd import _detect_squash_merge
 
         assert _detect_squash_merge(temp_git_repo) is False

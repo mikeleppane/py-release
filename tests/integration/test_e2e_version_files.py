@@ -13,9 +13,9 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from release_py.cli.app import app
-from release_py.project.lockfile import PackageManager, detect_package_manager
-from release_py.project.pyproject import detect_version_files, get_version_from_file
+from releasio.cli.app import app
+from releasio.project.lockfile import PackageManager, detect_package_manager
+from releasio.project.pyproject import detect_version_files, get_version_from_file
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -416,7 +416,7 @@ class TestE2EUpdateWithVersionFiles:
         )
         pyproject.write_text(content)
 
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [1.1.0]\n\n- New feature"
 
             result = runner.invoke(app, ["update", str(src_layout_project), "--execute"])
@@ -436,7 +436,7 @@ class TestE2EUpdateWithVersionFiles:
 
     def test_update_flat_layout_updates_all_files(self, flat_layout_project: Path):
         """Update command updates all version files in flat layout."""
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [2.0.1]\n\n- Bug fix"
 
             result = runner.invoke(app, ["update", str(flat_layout_project), "--execute"])
@@ -466,7 +466,7 @@ class TestE2EUpdateWithVersionFiles:
         )
         pyproject_path.write_text(content)
 
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [1.6.0]\n\n- New module"
 
             result = runner.invoke(app, ["update", str(poetry_project), "--execute"])
@@ -490,7 +490,7 @@ class TestE2EUpdateWithVersionFiles:
         )
         pyproject_path.write_text(content)
 
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [4.0.0]\n\n- Breaking change"
 
             result = runner.invoke(app, ["update", str(pdm_project), "--execute"])
@@ -556,7 +556,7 @@ auto_detect_version_files = true
             capture_output=True,
         )
 
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [1.0.1]"
 
             result = runner.invoke(app, ["update", str(repo), "--execute"])
@@ -604,7 +604,7 @@ auto_detect_version_files = true
             capture_output=True,
         )
 
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [1.1.0]"
 
             result = runner.invoke(app, ["update", str(repo), "--execute"])
@@ -620,7 +620,7 @@ auto_detect_version_files = true
     def test_lock_file_update_tool_not_found(self, src_layout_project: Path):
         """Handle case when lock file tool (uv/poetry/pdm) not found."""
         with (
-            patch("release_py.core.changelog.generate_changelog") as mock_changelog,
+            patch("releasio.core.changelog.generate_changelog") as mock_changelog,
             patch("shutil.which", return_value=None),
         ):  # Tool not found
             mock_changelog.return_value = "## [1.1.0]"
@@ -634,7 +634,7 @@ auto_detect_version_files = true
     def test_lock_file_disabled(self, flat_layout_project: Path):
         """Lock file update disabled in config."""
         # flat_layout_project has update_lock_file = false
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [2.0.1]"
 
             result = runner.invoke(app, ["update", str(flat_layout_project), "--execute"])
@@ -739,7 +739,7 @@ version_files = ["custom_version.txt"]
             capture_output=True,
         )
 
-        with patch("release_py.core.changelog.generate_changelog") as mock_changelog:
+        with patch("releasio.core.changelog.generate_changelog") as mock_changelog:
             mock_changelog.return_value = "## [1.1.0]"
 
             result = runner.invoke(app, ["update", str(repo), "--execute"])

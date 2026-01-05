@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from release_py.config import load_config
-from release_py.config.loader import ConfigSource, find_releasio_config
+from releasio.config import load_config
+from releasio.config.loader import ConfigSource, find_releasio_config
 
 
 class TestConfigIntegration:

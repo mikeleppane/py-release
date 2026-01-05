@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from release_py.config.loader import (
+from releasio.config.loader import (
     extract_release_py_config,
     find_pyproject_toml,
     get_project_name,
@@ -14,7 +14,7 @@ from release_py.config.loader import (
     load_config,
     load_pyproject_toml,
 )
-from release_py.config.models import (
+from releasio.config.models import (
     BranchConfig,
     ChangelogConfig,
     CommitParser,
@@ -26,7 +26,7 @@ from release_py.config.models import (
     ReleasePyConfig,
     VersionConfig,
 )
-from release_py.exceptions import ConfigNotFoundError, ConfigValidationError
+from releasio.exceptions import ConfigNotFoundError, ConfigValidationError
 
 
 class TestReleasePyConfig:
@@ -634,7 +634,7 @@ version = "1.0.0"
 default_branch = "pyproject"
 """)
 
-        from release_py.config.loader import ConfigSource, find_releasio_config
+        from releasio.config.loader import ConfigSource, find_releasio_config
 
         config_paths = find_releasio_config(tmp_path)
         assert config_paths is not None
@@ -650,7 +650,7 @@ name = "test"
 version = "1.0.0"
 """)
 
-        from release_py.config.loader import ConfigSource, find_releasio_config
+        from releasio.config.loader import ConfigSource, find_releasio_config
 
         config_paths = find_releasio_config(tmp_path)
         assert config_paths is not None
@@ -667,7 +667,7 @@ version = "1.0.0"
 default_branch = "main"
 """)
 
-        from release_py.config.loader import ConfigSource, find_releasio_config
+        from releasio.config.loader import ConfigSource, find_releasio_config
 
         config_paths = find_releasio_config(tmp_path)
         assert config_paths is not None
@@ -677,14 +677,14 @@ default_branch = "main"
         """Error when custom config exists but no pyproject.toml."""
         (tmp_path / ".releasio.toml").write_text("default_branch = 'main'")
 
-        from release_py.config.loader import find_releasio_config
+        from releasio.config.loader import find_releasio_config
 
         with pytest.raises(ConfigNotFoundError, match=r"no pyproject\.toml"):
             find_releasio_config(tmp_path)
 
     def test_no_config_returns_none(self, tmp_path: Path):
         """Returns None when no config files found."""
-        from release_py.config.loader import find_releasio_config
+        from releasio.config.loader import find_releasio_config
 
         result = find_releasio_config(tmp_path)
         assert result is None
@@ -695,7 +695,7 @@ class TestExtractReleasioConfig:
 
     def test_extract_from_custom_config_top_level(self):
         """Extract from custom config (top-level keys)."""
-        from release_py.config.loader import ConfigSource, extract_releasio_config
+        from releasio.config.loader import ConfigSource, extract_releasio_config
 
         data = {
             "default_branch": "develop",
@@ -708,7 +708,7 @@ class TestExtractReleasioConfig:
 
     def test_extract_from_pyproject_nested(self):
         """Extract from pyproject.toml ([tool.releasio])."""
-        from release_py.config.loader import ConfigSource, extract_releasio_config
+        from releasio.config.loader import ConfigSource, extract_releasio_config
 
         data = {
             "project": {"name": "test"},
@@ -720,7 +720,7 @@ class TestExtractReleasioConfig:
 
     def test_extract_empty_from_pyproject_no_section(self):
         """Returns empty dict when [tool.releasio] missing."""
-        from release_py.config.loader import ConfigSource, extract_releasio_config
+        from releasio.config.loader import ConfigSource, extract_releasio_config
 
         data = {"project": {"name": "test"}}
 
@@ -745,7 +745,7 @@ name = "test"
 version = "1.0.0"
 """)
 
-        from release_py.config import load_config
+        from releasio.config import load_config
 
         config = load_config(tmp_path)
         assert config.default_branch == "develop"
@@ -763,7 +763,7 @@ name = "test"
 version = "1.0.0"
 """)
 
-        from release_py.config import load_config
+        from releasio.config import load_config
 
         config = load_config(tmp_path)
         assert config.allow_dirty is True
@@ -780,7 +780,7 @@ version = "1.0.0"
 default_branch = "pyproject"
 """)
 
-        from release_py.config import load_config
+        from releasio.config import load_config
 
         config = load_config(tmp_path)
         assert config.default_branch == "dotfile"
@@ -795,7 +795,7 @@ name = "test"
 version = "1.0.0"
 """)
 
-        from release_py.config import load_config
+        from releasio.config import load_config
 
         config = load_config(config_file)
         assert config.default_branch == "staging"
@@ -809,7 +809,7 @@ name = "test"
 version = "1.0.0"
 """)
 
-        from release_py.config import load_config
+        from releasio.config import load_config
 
         with pytest.raises(ConfigValidationError, match="Invalid TOML"):
             load_config(tmp_path)
@@ -818,7 +818,7 @@ version = "1.0.0"
         """Custom config without pyproject.toml raises error."""
         (tmp_path / ".releasio.toml").write_text("default_branch = 'main'")
 
-        from release_py.config import load_config
+        from releasio.config import load_config
 
         with pytest.raises(ConfigNotFoundError, match=r"no pyproject\.toml"):
             load_config(tmp_path)
@@ -828,7 +828,7 @@ version = "1.0.0"
         config_file = tmp_path / "config.yaml"
         config_file.write_text("default_branch: main")
 
-        from release_py.config import load_config
+        from releasio.config import load_config
 
         with pytest.raises(ConfigValidationError, match="Unsupported config file"):
             load_config(config_file)

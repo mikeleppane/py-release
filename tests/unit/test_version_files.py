@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from release_py.exceptions import ProjectError, VersionNotFoundError
-from release_py.project.pyproject import (
+from releasio.exceptions import ProjectError, VersionNotFoundError
+from releasio.project.pyproject import (
     VERSION_PATTERNS,
     detect_version_files,
     get_version_from_file,

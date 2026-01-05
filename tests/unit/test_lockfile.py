@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
-from release_py.project.lockfile import (
+from releasio.project.lockfile import (
     LOCK_FILES,
     PackageManager,
     detect_package_manager,

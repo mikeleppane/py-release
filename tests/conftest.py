@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from release_py.config.models import CommitsConfig, ReleasePyConfig
-from release_py.vcs.git import Commit
+from releasio.config.models import CommitsConfig, ReleasePyConfig
+from releasio.vcs.git import Commit
 
 if TYPE_CHECKING:
     from pathlib import Path

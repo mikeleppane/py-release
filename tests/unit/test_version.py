@@ -6,8 +6,8 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from release_py.core.version import BumpType, PreRelease, Version, parse_version
-from release_py.exceptions import InvalidVersionError
+from releasio.core.version import BumpType, PreRelease, Version, parse_version
+from releasio.exceptions import InvalidVersionError
 
 
 class TestVersionParsing:
@@ -194,7 +194,7 @@ class TestVersionProperties:
         """short_sha returns first 7 characters."""
         from datetime import datetime
 
-        from release_py.vcs.git import Commit
+        from releasio.vcs.git import Commit
 
         c = Commit("abc1234567890", "msg", "author", "email", datetime.now())
         assert c.short_sha == "abc1234"

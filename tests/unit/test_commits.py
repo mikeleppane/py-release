@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from release_py.config.models import CommitParser, CommitsConfig
-from release_py.core.commits import (
+from releasio.config.models import CommitParser, CommitsConfig
+from releasio.core.commits import (
     DEFAULT_ALLOWED_TYPES,
     ParsedCommit,
     calculate_bump,
@@ -17,8 +17,8 @@ from release_py.core.commits import (
     validate_pr_title,
     validate_pr_titles_batch,
 )
-from release_py.core.version import BumpType
-from release_py.vcs.git import Commit
+from releasio.core.version import BumpType
+from releasio.vcs.git import Commit
 
 
 class TestParsedCommit:

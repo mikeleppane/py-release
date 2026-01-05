@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from release_py.cli.app import app
+from releasio.cli.app import app
 
 runner = CliRunner()
 
@@ -75,7 +75,7 @@ class TestReleaseExecution:
 
     def test_release_creates_tag(self, release_ready_repo: Path):
         """Release creates git tag."""
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.create_release = AsyncMock(
                 return_value=MagicMock(
@@ -85,11 +85,11 @@ class TestReleaseExecution:
             )
             mock_github.return_value = mock_client
 
-            with patch("release_py.publish.pypi.build_package") as mock_build:
+            with patch("releasio.publish.pypi.build_package") as mock_build:
                 mock_build.return_value = []
 
-                with patch("release_py.publish.pypi.publish_package"):
-                    with patch("release_py.vcs.git.GitRepository.push_tag"):
+                with patch("releasio.publish.pypi.publish_package"):
+                    with patch("releasio.vcs.git.GitRepository.push_tag"):
                         result = runner.invoke(
                             app, ["release", str(release_ready_repo), "--execute"]
                         )
@@ -99,7 +99,7 @@ class TestReleaseExecution:
 
     def test_release_skip_publish(self, release_ready_repo: Path):
         """Release with --skip-publish skips PyPI."""
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.create_release = AsyncMock(
                 return_value=MagicMock(
@@ -109,11 +109,11 @@ class TestReleaseExecution:
             )
             mock_github.return_value = mock_client
 
-            with patch("release_py.publish.pypi.build_package") as mock_build:
+            with patch("releasio.publish.pypi.build_package") as mock_build:
                 mock_build.return_value = []
 
-                with patch("release_py.publish.pypi.publish_package") as mock_publish:
-                    with patch("release_py.vcs.git.GitRepository.push_tag"):
+                with patch("releasio.publish.pypi.publish_package") as mock_publish:
+                    with patch("releasio.vcs.git.GitRepository.push_tag"):
                         result = runner.invoke(
                             app,
                             ["release", str(release_ready_repo), "--execute", "--skip-publish"],
@@ -181,7 +181,7 @@ class TestReleaseGitHubIntegration:
 
     def test_release_creates_github_release(self, release_ready_repo: Path):
         """Create GitHub release with changelog."""
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.create_release = AsyncMock(
                 return_value=MagicMock(
@@ -192,9 +192,9 @@ class TestReleaseGitHubIntegration:
             )
             mock_github.return_value = mock_client
 
-            with patch("release_py.publish.pypi.build_package", return_value=[]):
-                with patch("release_py.publish.pypi.publish_package"):
-                    with patch("release_py.vcs.git.GitRepository.push_tag"):
+            with patch("releasio.publish.pypi.build_package", return_value=[]):
+                with patch("releasio.publish.pypi.publish_package"):
+                    with patch("releasio.vcs.git.GitRepository.push_tag"):
                         result = runner.invoke(
                             app, ["release", str(release_ready_repo), "--execute"]
                         )
@@ -205,7 +205,7 @@ class TestReleaseGitHubIntegration:
 
     def test_release_uses_changelog_as_body(self, release_ready_repo: Path):
         """GitHub release body contains release info."""
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.create_release = AsyncMock(
                 return_value=MagicMock(
@@ -215,9 +215,9 @@ class TestReleaseGitHubIntegration:
             )
             mock_github.return_value = mock_client
 
-            with patch("release_py.publish.pypi.build_package", return_value=[]):
-                with patch("release_py.publish.pypi.publish_package"):
-                    with patch("release_py.vcs.git.GitRepository.push_tag"):
+            with patch("releasio.publish.pypi.build_package", return_value=[]):
+                with patch("releasio.publish.pypi.publish_package"):
+                    with patch("releasio.vcs.git.GitRepository.push_tag"):
                         result = runner.invoke(
                             app, ["release", str(release_ready_repo), "--execute"]
                         )
@@ -238,18 +238,18 @@ class TestReleasePublishing:
 
     def test_release_builds_package(self, release_ready_repo: Path):
         """Release builds package before publishing."""
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.create_release = AsyncMock(
                 return_value=MagicMock(tag="v1.0.0", url="http://example.com")
             )
             mock_github.return_value = mock_client
 
-            with patch("release_py.publish.pypi.build_package") as mock_build:
+            with patch("releasio.publish.pypi.build_package") as mock_build:
                 mock_build.return_value = [Path("/dist/pkg-1.0.0.whl")]
 
-                with patch("release_py.publish.pypi.publish_package"):
-                    with patch("release_py.vcs.git.GitRepository.push_tag"):
+                with patch("releasio.publish.pypi.publish_package"):
+                    with patch("releasio.vcs.git.GitRepository.push_tag"):
                         result = runner.invoke(
                             app, ["release", str(release_ready_repo), "--execute"]
                         )
@@ -259,7 +259,7 @@ class TestReleasePublishing:
 
     def test_release_publishes_to_pypi(self, release_ready_repo: Path):
         """Release publishes built package to PyPI."""
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.create_release = AsyncMock(
                 return_value=MagicMock(tag="v1.0.0", url="http://example.com")
@@ -268,9 +268,9 @@ class TestReleasePublishing:
 
             dist_files = [Path("/dist/pkg-1.0.0.whl")]
 
-            with patch("release_py.publish.pypi.build_package", return_value=dist_files):
-                with patch("release_py.publish.pypi.publish_package") as mock_publish:
-                    with patch("release_py.vcs.git.GitRepository.push_tag"):
+            with patch("releasio.publish.pypi.build_package", return_value=dist_files):
+                with patch("releasio.publish.pypi.publish_package") as mock_publish:
+                    with patch("releasio.vcs.git.GitRepository.push_tag"):
                         result = runner.invoke(
                             app, ["release", str(release_ready_repo), "--execute"]
                         )
@@ -298,7 +298,7 @@ class TestReleaseBodyGeneration:
             capture_output=True,
         )
 
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
 
             # Mock PR-based changelog methods
@@ -317,9 +317,9 @@ class TestReleaseBodyGeneration:
             )
             mock_github.return_value = mock_client
 
-            with patch("release_py.publish.pypi.build_package", return_value=[]):
-                with patch("release_py.publish.pypi.publish_package"):
-                    with patch("release_py.vcs.git.GitRepository.push_tag"):
+            with patch("releasio.publish.pypi.build_package", return_value=[]):
+                with patch("releasio.publish.pypi.publish_package"):
+                    with patch("releasio.vcs.git.GitRepository.push_tag"):
                         result = runner.invoke(
                             app, ["release", str(release_ready_repo), "--execute"]
                         )
@@ -350,7 +350,7 @@ class TestReleaseBodyGeneration:
             capture_output=True,
         )
 
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.create_release = AsyncMock(
                 return_value=MagicMock(
@@ -362,12 +362,12 @@ class TestReleaseBodyGeneration:
 
             # Mock changelog generation
             with patch(
-                "release_py.core.changelog.generate_changelog",
+                "releasio.core.changelog.generate_changelog",
                 return_value="## Features\n\n- add new feature",
             ) as mock_changelog:
-                with patch("release_py.publish.pypi.build_package", return_value=[]):
-                    with patch("release_py.publish.pypi.publish_package"):
-                        with patch("release_py.vcs.git.GitRepository.push_tag"):
+                with patch("releasio.publish.pypi.build_package", return_value=[]):
+                    with patch("releasio.publish.pypi.publish_package"):
+                        with patch("releasio.vcs.git.GitRepository.push_tag"):
                             result = runner.invoke(
                                 app, ["release", str(release_ready_repo), "--execute"]
                             )
@@ -421,7 +421,7 @@ class TestReleaseBodyGeneration:
             capture_output=True,
         )
 
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.create_release = AsyncMock(
                 return_value=MagicMock(
@@ -433,12 +433,12 @@ class TestReleaseBodyGeneration:
 
             # Mock changelog generation
             with patch(
-                "release_py.core.changelog.generate_changelog",
+                "releasio.core.changelog.generate_changelog",
                 return_value="## Features\n\n- feature 1\n- feature 2",
             ):
-                with patch("release_py.publish.pypi.build_package", return_value=[]):
-                    with patch("release_py.publish.pypi.publish_package"):
-                        with patch("release_py.vcs.git.GitRepository.push_tag"):
+                with patch("releasio.publish.pypi.build_package", return_value=[]):
+                    with patch("releasio.publish.pypi.publish_package"):
+                        with patch("releasio.vcs.git.GitRepository.push_tag"):
                             result = runner.invoke(
                                 app, ["release", str(release_ready_repo), "--execute"]
                             )
@@ -462,7 +462,7 @@ class TestReleaseBodyGeneration:
             capture_output=True,
         )
 
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             # Simulate GitHub API failure
             mock_client.create_release = AsyncMock(
@@ -472,13 +472,13 @@ class TestReleaseBodyGeneration:
 
             # Mock changelog generation
             with patch(
-                "release_py.core.changelog.generate_changelog",
+                "releasio.core.changelog.generate_changelog",
                 return_value="## Changes",
             ):
-                with patch("release_py.publish.pypi.build_package", return_value=[]):
-                    with patch("release_py.publish.pypi.publish_package"):
+                with patch("releasio.publish.pypi.build_package", return_value=[]):
+                    with patch("releasio.publish.pypi.publish_package"):
                         # Don't mock push_tag to allow tag creation
-                        with patch("release_py.vcs.git.GitRepository.push_tag"):
+                        with patch("releasio.vcs.git.GitRepository.push_tag"):
                             result = runner.invoke(
                                 app, ["release", str(release_ready_repo), "--execute"]
                             )
@@ -550,15 +550,15 @@ class TestReleaseAssetUploads:
         async def mock_upload_asset(release_id, file_path, content_type):
             return f"https://github.com/owner/repo/releases/download/v1.0.0/{file_path.name}"
 
-        with patch("release_py.forge.github.GitHubClient.create_release", new=mock_create_release):
+        with patch("releasio.forge.github.GitHubClient.create_release", new=mock_create_release):
             with patch(
-                "release_py.forge.github.GitHubClient.upload_release_asset",
+                "releasio.forge.github.GitHubClient.upload_release_asset",
                 new=mock_upload_asset,
             ):
-                with patch("release_py.vcs.git.GitRepository.create_tag"):
-                    with patch("release_py.vcs.git.GitRepository.push_tag"):
+                with patch("releasio.vcs.git.GitRepository.create_tag"):
+                    with patch("releasio.vcs.git.GitRepository.push_tag"):
                         with patch(
-                            "release_py.core.changelog.generate_changelog",
+                            "releasio.core.changelog.generate_changelog",
                             return_value="## Changes",
                         ):
                             result = runner.invoke(
@@ -625,15 +625,15 @@ class TestReleaseAssetUploads:
         async def mock_upload_asset(release_id, file_path, content_type):
             raise Exception("Upload failed")
 
-        with patch("release_py.forge.github.GitHubClient.create_release", new=mock_create_release):
+        with patch("releasio.forge.github.GitHubClient.create_release", new=mock_create_release):
             with patch(
-                "release_py.forge.github.GitHubClient.upload_release_asset",
+                "releasio.forge.github.GitHubClient.upload_release_asset",
                 new=mock_upload_asset,
             ):
-                with patch("release_py.vcs.git.GitRepository.create_tag"):
-                    with patch("release_py.vcs.git.GitRepository.push_tag"):
+                with patch("releasio.vcs.git.GitRepository.create_tag"):
+                    with patch("releasio.vcs.git.GitRepository.push_tag"):
                         with patch(
-                            "release_py.core.changelog.generate_changelog",
+                            "releasio.core.changelog.generate_changelog",
                             return_value="## Changes",
                         ):
                             result = runner.invoke(
@@ -694,22 +694,22 @@ class TestReleaseValidation:
         async def mock_create_release(*args, **kwargs):
             return mock_release
 
-        with patch("release_py.forge.github.GitHubClient.create_release", new=mock_create_release):
-            with patch("release_py.vcs.git.GitRepository.create_tag"):
-                with patch("release_py.vcs.git.GitRepository.push_tag"):
+        with patch("releasio.forge.github.GitHubClient.create_release", new=mock_create_release):
+            with patch("releasio.vcs.git.GitRepository.create_tag"):
+                with patch("releasio.vcs.git.GitRepository.push_tag"):
                     with patch(
-                        "release_py.core.changelog.generate_changelog",
+                        "releasio.core.changelog.generate_changelog",
                         return_value="## Changes",
                     ):
                         with patch(
-                            "release_py.publish.pypi.build_package",
+                            "releasio.publish.pypi.build_package",
                             return_value=[Path("dist/test-project-1.0.0-py3-none-any.whl")],
                         ):
                             with patch(
-                                "release_py.publish.pypi.validate_dist_files",
+                                "releasio.publish.pypi.validate_dist_files",
                                 return_value=(True, "Validation passed"),
                             ) as mock_validate:
-                                with patch("release_py.publish.pypi.publish_package"):
+                                with patch("releasio.publish.pypi.publish_package"):
                                     result = runner.invoke(
                                         app, ["release", str(release_ready_repo), "--execute"]
                                     )
@@ -749,18 +749,18 @@ class TestReleaseValidation:
         config += "\n[tool.releasio.publish]\nvalidate_before_publish = true\n"
         pyproject_path.write_text(config)
 
-        with patch("release_py.vcs.git.GitRepository.create_tag"):
-            with patch("release_py.vcs.git.GitRepository.push_tag"):
+        with patch("releasio.vcs.git.GitRepository.create_tag"):
+            with patch("releasio.vcs.git.GitRepository.push_tag"):
                 with patch(
-                    "release_py.core.changelog.generate_changelog",
+                    "releasio.core.changelog.generate_changelog",
                     return_value="## Changes",
                 ):
                     with patch(
-                        "release_py.publish.pypi.build_package",
+                        "releasio.publish.pypi.build_package",
                         return_value=[Path("dist/test-project-1.0.0-py3-none-any.whl")],
                     ):
                         with patch(
-                            "release_py.publish.pypi.validate_dist_files",
+                            "releasio.publish.pypi.validate_dist_files",
                             return_value=(False, "Package metadata is invalid"),
                         ):
                             result = runner.invoke(
@@ -804,23 +804,23 @@ class TestReleaseValidation:
         config += "\n[tool.releasio.publish]\ncheck_existing_version = true\n"
         pyproject_path.write_text(config)
 
-        with patch("release_py.vcs.git.GitRepository.create_tag"):
-            with patch("release_py.vcs.git.GitRepository.push_tag"):
+        with patch("releasio.vcs.git.GitRepository.create_tag"):
+            with patch("releasio.vcs.git.GitRepository.push_tag"):
                 with patch(
-                    "release_py.core.changelog.generate_changelog",
+                    "releasio.core.changelog.generate_changelog",
                     return_value="## Changes",
                 ):
                     with patch(
-                        "release_py.publish.pypi.build_package",
+                        "releasio.publish.pypi.build_package",
                         return_value=[Path("dist/test-project-1.0.0-py3-none-any.whl")],
                     ):
                         # Mock validation to pass so we can test version check
                         with patch(
-                            "release_py.publish.pypi.validate_dist_files",
+                            "releasio.publish.pypi.validate_dist_files",
                             return_value=(True, ""),
                         ):
                             with patch(
-                                "release_py.publish.pypi.check_pypi_version_exists",
+                                "releasio.publish.pypi.check_pypi_version_exists",
                                 return_value=True,
                             ):
                                 result = runner.invoke(

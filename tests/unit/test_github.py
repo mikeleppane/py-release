@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from release_py.exceptions import AuthenticationError, ForgeError, RateLimitError
-from release_py.forge.base import MergeRequestState
-from release_py.forge.github import GitHubClient
+from releasio.exceptions import AuthenticationError, ForgeError, RateLimitError
+from releasio.forge.base import MergeRequestState
+from releasio.forge.github import GitHubClient
 
 
 class TestGitHubClientInit:
@@ -548,7 +548,7 @@ class TestBotFiltering:
 
     def test_default_bot_authors(self):
         """Default config includes common bots."""
-        from release_py.config.models import ChangelogConfig
+        from releasio.config.models import ChangelogConfig
 
         config = ChangelogConfig()
 
@@ -559,7 +559,7 @@ class TestBotFiltering:
 
     def test_custom_bot_authors(self):
         """Custom bot authors can be configured."""
-        from release_py.config.models import ChangelogConfig
+        from releasio.config.models import ChangelogConfig
 
         config = ChangelogConfig(ignore_authors=["custom-bot", "another-bot"])
 

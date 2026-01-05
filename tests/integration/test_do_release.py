@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from release_py.cli.app import app
+from releasio.cli.app import app
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -98,7 +98,7 @@ class TestDoReleaseExecution:
 
     def test_do_release_updates_version(self, do_release_ready_repo: Path):
         """Do-release updates version in pyproject.toml."""
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.create_release = AsyncMock(
                 return_value=MagicMock(
@@ -108,9 +108,9 @@ class TestDoReleaseExecution:
             )
             mock_github.return_value = mock_client
 
-            with patch("release_py.publish.pypi.build_package", return_value=[]):
-                with patch("release_py.publish.pypi.publish_package"):
-                    with patch("release_py.vcs.git.GitRepository.push_tag"):
+            with patch("releasio.publish.pypi.build_package", return_value=[]):
+                with patch("releasio.publish.pypi.publish_package"):
+                    with patch("releasio.vcs.git.GitRepository.push_tag"):
                         result = runner.invoke(
                             app,
                             ["do-release", str(do_release_ready_repo), "--execute"],
@@ -124,7 +124,7 @@ class TestDoReleaseExecution:
 
     def test_do_release_creates_commit(self, do_release_ready_repo: Path):
         """Do-release creates a commit for version changes."""
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.create_release = AsyncMock(
                 return_value=MagicMock(
@@ -134,9 +134,9 @@ class TestDoReleaseExecution:
             )
             mock_github.return_value = mock_client
 
-            with patch("release_py.publish.pypi.build_package", return_value=[]):
-                with patch("release_py.publish.pypi.publish_package"):
-                    with patch("release_py.vcs.git.GitRepository.push_tag"):
+            with patch("releasio.publish.pypi.build_package", return_value=[]):
+                with patch("releasio.publish.pypi.publish_package"):
+                    with patch("releasio.vcs.git.GitRepository.push_tag"):
                         result = runner.invoke(
                             app,
                             ["do-release", str(do_release_ready_repo), "--execute"],
@@ -155,7 +155,7 @@ class TestDoReleaseExecution:
 
     def test_do_release_creates_tag(self, do_release_ready_repo: Path):
         """Do-release creates a git tag."""
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.create_release = AsyncMock(
                 return_value=MagicMock(
@@ -165,9 +165,9 @@ class TestDoReleaseExecution:
             )
             mock_github.return_value = mock_client
 
-            with patch("release_py.publish.pypi.build_package", return_value=[]):
-                with patch("release_py.publish.pypi.publish_package"):
-                    with patch("release_py.vcs.git.GitRepository.push_tag"):
+            with patch("releasio.publish.pypi.build_package", return_value=[]):
+                with patch("releasio.publish.pypi.publish_package"):
+                    with patch("releasio.vcs.git.GitRepository.push_tag"):
                         result = runner.invoke(
                             app,
                             ["do-release", str(do_release_ready_repo), "--execute"],
@@ -186,7 +186,7 @@ class TestDoReleaseExecution:
 
     def test_do_release_skip_publish(self, do_release_ready_repo: Path):
         """Do-release with --skip-publish skips PyPI."""
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.create_release = AsyncMock(
                 return_value=MagicMock(
@@ -196,9 +196,9 @@ class TestDoReleaseExecution:
             )
             mock_github.return_value = mock_client
 
-            with patch("release_py.publish.pypi.build_package") as mock_build:
-                with patch("release_py.publish.pypi.publish_package") as mock_publish:
-                    with patch("release_py.vcs.git.GitRepository.push_tag"):
+            with patch("releasio.publish.pypi.build_package") as mock_build:
+                with patch("releasio.publish.pypi.publish_package") as mock_publish:
+                    with patch("releasio.vcs.git.GitRepository.push_tag"):
                         result = runner.invoke(
                             app,
                             [
@@ -310,7 +310,7 @@ class TestDoReleasePublishWorkflow:
         config_content += '\n[tool.releasio.hooks]\nbuild = "echo Building custom {version}"\n'
         pyproject.write_text(config_content)
 
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.create_release = AsyncMock(
                 return_value=MagicMock(
@@ -320,7 +320,7 @@ class TestDoReleasePublishWorkflow:
             )
             mock_github.return_value = mock_client
 
-            with patch("release_py.vcs.git.GitRepository.push_tag"):
+            with patch("releasio.vcs.git.GitRepository.push_tag"):
                 result = runner.invoke(
                     app,
                     ["do-release", str(do_release_ready_repo), "--execute", "--skip-publish"],
@@ -350,7 +350,7 @@ class TestDoReleasePublishWorkflow:
 
     def test_do_release_publish_failure_shows_error(self, do_release_ready_repo: Path):
         """Do-release shows clear error when publish fails."""
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_client.create_release = AsyncMock(
                 return_value=MagicMock(
@@ -362,16 +362,16 @@ class TestDoReleasePublishWorkflow:
 
             # Mock changelog generation to avoid git-cliff issues
             with patch(
-                "release_py.core.changelog.generate_changelog",
+                "releasio.core.changelog.generate_changelog",
                 return_value="## [1.1.0]\n\n- Feature",
             ):
-                with patch("release_py.publish.pypi.build_package", return_value=[]):
-                    with patch("release_py.publish.pypi.publish_package") as mock_publish:
-                        from release_py.exceptions import UploadError
+                with patch("releasio.publish.pypi.build_package", return_value=[]):
+                    with patch("releasio.publish.pypi.publish_package") as mock_publish:
+                        from releasio.exceptions import UploadError
 
                         mock_publish.side_effect = UploadError("Upload failed")
 
-                        with patch("release_py.vcs.git.GitRepository.push_tag"):
+                        with patch("releasio.vcs.git.GitRepository.push_tag"):
                             result = runner.invoke(
                                 app,
                                 ["do-release", str(do_release_ready_repo), "--execute"],
@@ -385,7 +385,7 @@ class TestDoReleasePublishWorkflow:
 
     def test_do_release_github_release_creation(self, do_release_ready_repo: Path):
         """Do-release creates GitHub release with proper parameters."""
-        with patch("release_py.forge.github.GitHubClient") as mock_github:
+        with patch("releasio.forge.github.GitHubClient") as mock_github:
             mock_client = MagicMock()
             mock_create_release = AsyncMock(
                 return_value=MagicMock(
@@ -396,9 +396,9 @@ class TestDoReleasePublishWorkflow:
             mock_client.create_release = mock_create_release
             mock_github.return_value = mock_client
 
-            with patch("release_py.publish.pypi.build_package", return_value=[]):
-                with patch("release_py.publish.pypi.publish_package"):
-                    with patch("release_py.vcs.git.GitRepository.push_tag"):
+            with patch("releasio.publish.pypi.build_package", return_value=[]):
+                with patch("releasio.publish.pypi.publish_package"):
+                    with patch("releasio.vcs.git.GitRepository.push_tag"):
                         result = runner.invoke(
                             app,
                             ["do-release", str(do_release_ready_repo), "--execute"],

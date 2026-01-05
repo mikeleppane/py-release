@@ -93,7 +93,7 @@ body:
       render: text
       placeholder: |
         You can generate profiling data with:
-        python -m cProfile -s cumtime -m release_py.cli.app update
+        python -m cProfile -s cumtime -m releasio.cli.app update
 
   - type: textarea
     id: context

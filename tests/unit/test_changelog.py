@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from release_py.config.models import ChangelogConfig, ReleasePyConfig
-from release_py.core.changelog import (
+from releasio.config.models import ChangelogConfig, ReleasePyConfig
+from releasio.core.changelog import (
     format_commit_entry,
     generate_changelog,
     generate_cliff_config,
@@ -18,10 +18,10 @@ from release_py.core.changelog import (
     get_bump_from_git_cliff,
     is_git_cliff_available,
 )
-from release_py.core.commits import ParsedCommit
-from release_py.core.version import BumpType, Version
-from release_py.exceptions import ChangelogError, GitCliffError
-from release_py.vcs.git import Commit, GitRepository
+from releasio.core.commits import ParsedCommit
+from releasio.core.version import BumpType, Version
+from releasio.exceptions import ChangelogError, GitCliffError
+from releasio.vcs.git import Commit, GitRepository
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -568,7 +568,7 @@ class TestGenerateCliffConfig:
 
     def test_generate_config_includes_custom_parsers(self):
         """Generated config includes custom commit parsers."""
-        from release_py.config.models import CommitParser, CommitsConfig
+        from releasio.config.models import CommitParser, CommitsConfig
 
         config = ReleasePyConfig(
             commits=CommitsConfig(
@@ -595,7 +595,7 @@ class TestGenerateCliffConfig:
 
     def test_generate_config_custom_tag_prefix(self):
         """Generated config uses custom tag prefix."""
-        from release_py.config.models import VersionConfig
+        from releasio.config.models import VersionConfig
 
         config = ReleasePyConfig(version=VersionConfig(tag_prefix="release-"))
         result = generate_cliff_config(config)
@@ -631,7 +631,7 @@ class TestGenerateCliffConfig:
 
     def test_generate_config_escapes_special_chars(self):
         """Special characters in patterns are escaped."""
-        from release_py.config.models import CommitParser, CommitsConfig
+        from releasio.config.models import CommitParser, CommitsConfig
 
         config = ReleasePyConfig(
             commits=CommitsConfig(

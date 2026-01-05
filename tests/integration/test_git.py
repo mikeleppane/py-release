@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from release_py.exceptions import (
+from releasio.exceptions import (
     DirtyRepositoryError,
     GitError,
     NotARepositoryError,
     TagExistsError,
 )
-from release_py.vcs.git import GitRepository
+from releasio.vcs.git import GitRepository
 
 if TYPE_CHECKING:
     from pathlib import Path
