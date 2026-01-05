@@ -26,4 +26,15 @@ venv.bak/
 *.swp
 *.swo   
 # Logs and databases
-*.log   
+*.log
+
+# Test results and coverage
+E2E_TEST_RESULTS.md
+E2E_V3_RESULTS.md
+coverage.json
+
+# Windows zone identifiers
+*:Zone.Identifier
+
+# Test scripts (temporary)
+e2e_test*.sh   
