@@ -1,3 +1,8 @@
+## [2.2.0] - 2026-01-06
+
+### 🚀 Features
+
+- *(release)* Add FastAPI-style release pages with configurable options
 ## [2.1.7] - 2026-01-06
 
 ### 🐛 Bug Fixes
