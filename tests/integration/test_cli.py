@@ -300,11 +300,12 @@ class TestCLIInit:
         pyproject = tmp_path / "pyproject.toml"
         pyproject.write_text('[project]\nname = "test"\nversion = "0.1.0"\n')
 
-        # Run init with default inputs
+        # Run init with default inputs (just press enter for all prompts)
+        # Wizard flow: mode, branch, prefix, pypi?, tool, changelog?, path, prs?, owner, output, workflow?, pr-check?, confirm
         result = runner.invoke(
             app,
             ["init", str(tmp_path)],
-            input="main\nv\nn\nsmall-team\nn\n",  # branch, prefix, no squash, type, no workflow
+            input="\n" * 15,  # Accept all defaults
         )
 
         assert result.exit_code == 0
@@ -333,10 +334,11 @@ class TestCLIInit:
             '[tool.releasio]\ndefault_branch = "old"\n'
         )
 
+        # Wizard flow: mode, branch, prefix, pypi?, tool, changelog?, path, prs?, owner, output, workflow?, pr-check?, confirm
         result = runner.invoke(
             app,
             ["init", "--force", str(tmp_path)],
-            input="develop\nv\nn\nsmall-team\nn\n",
+            input="\ndevelop\n" + "\n" * 12,  # quick mode, develop branch, rest defaults
         )
 
         assert result.exit_code == 0
@@ -348,10 +350,11 @@ class TestCLIInit:
         pyproject = tmp_path / "pyproject.toml"
         pyproject.write_text('[project]\nname = "test"\nversion = "0.1.0"\n')
 
+        # Wizard flow with all defaults creates workflow by default
         result = runner.invoke(
             app,
             ["init", str(tmp_path)],
-            input="main\nv\nn\nsmall-team\ny\nn\n",  # yes to workflow, no to PR check
+            input="\n" * 15,  # Accept all defaults (workflow=yes by default)
         )
 
         assert result.exit_code == 0
@@ -364,10 +367,28 @@ class TestCLIInit:
         pyproject = tmp_path / "pyproject.toml"
         pyproject.write_text('[project]\nname = "test"\nversion = "0.1.0"\n')
 
+        # Wizard flow: mode, branch, prefix, pypi?, tool, changelog?, path, prs?, owner, output, workflow?, pr-check?, confirm
+        # We need to say 'y' to PR check workflow (which comes after release workflow prompt)
+        # Default flow, but say 'y' to pr-check
+        inputs = [
+            "",  # mode: quick (default)
+            "",  # branch: main (default)
+            "",  # tag prefix: v (default)
+            "",  # pypi: y (default)
+            "",  # tool: uv (default)
+            "",  # changelog: y (default)
+            "",  # path: CHANGELOG.md (default)
+            "",  # prs: n (default)
+            "",  # owner: empty (default)
+            "",  # output: pyproject (default)
+            "",  # workflow: y (default)
+            "y",  # pr-check: YES
+            "",  # confirm: y (default)
+        ]
         result = runner.invoke(
             app,
             ["init", str(tmp_path)],
-            input="main\nv\nn\nopen-source\ny\ny\n",  # yes to both workflows
+            input="\n".join(inputs) + "\n",
         )
 
         assert result.exit_code == 0
