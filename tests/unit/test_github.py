@@ -716,6 +716,140 @@ class TestParallelPRFetching:
             assert prs[0]["number"] == 1
 
 
+class TestCommitAuthorResolution:
+    """Tests for commit author GitHub username resolution."""
+
+    @pytest.mark.asyncio
+    async def test_get_commit_author_with_github_login(self):
+        """Get commit author with linked GitHub account."""
+        client = GitHubClient(owner="owner", repo="repo", token="test-token")
+
+        commit_response = {
+            "sha": "abc123",
+            "commit": {
+                "author": {
+                    "name": "John Doe",
+                    "email": "john@example.com",
+                }
+            },
+            "author": {
+                "login": "johndoe",
+            },
+        }
+
+        with patch.object(client, "_request", new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = commit_response
+
+            result = await client.get_commit_author("abc123")
+
+            assert result["name"] == "John Doe"
+            assert result["email"] == "john@example.com"
+            assert result["login"] == "johndoe"
+            mock_request.assert_called_once_with("GET", "/repos/owner/repo/commits/abc123")
+
+    @pytest.mark.asyncio
+    async def test_get_commit_author_without_github_login(self):
+        """Get commit author without linked GitHub account."""
+        client = GitHubClient(owner="owner", repo="repo", token="test-token")
+
+        # When a commit email is not linked to a GitHub account,
+        # the 'author' field at the top level is null
+        commit_response = {
+            "sha": "abc123",
+            "commit": {
+                "author": {
+                    "name": "External User",
+                    "email": "external@other.com",
+                }
+            },
+            "author": None,
+        }
+
+        with patch.object(client, "_request", new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = commit_response
+
+            result = await client.get_commit_author("abc123")
+
+            assert result["name"] == "External User"
+            assert result["email"] == "external@other.com"
+            assert result["login"] is None
+
+    @pytest.mark.asyncio
+    async def test_get_commit_author_not_found(self):
+        """Get commit author for non-existent commit returns None values."""
+        client = GitHubClient(owner="owner", repo="repo", token="test-token")
+
+        with patch.object(client, "_request", new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = {}
+
+            result = await client.get_commit_author("nonexistent")
+
+            assert result["name"] is None
+            assert result["email"] is None
+            assert result["login"] is None
+
+    @pytest.mark.asyncio
+    async def test_get_commit_author_api_error(self):
+        """API error returns None values."""
+        client = GitHubClient(owner="owner", repo="repo", token="test-token")
+
+        with patch.object(client, "_request", new_callable=AsyncMock) as mock_request:
+            mock_request.side_effect = ForgeError("API error")
+
+            result = await client.get_commit_author("abc123")
+
+            assert result["name"] is None
+            assert result["email"] is None
+            assert result["login"] is None
+
+    @pytest.mark.asyncio
+    async def test_get_commits_authors_multiple(self):
+        """Get GitHub usernames for multiple commits in parallel."""
+        client = GitHubClient(owner="owner", repo="repo", token="test-token")
+
+        async def mock_get_commit_author(sha: str) -> dict[str, str | None]:
+            if sha == "abc123":
+                return {"name": "John", "email": "john@example.com", "login": "johndoe"}
+            if sha == "def456":
+                return {"name": "Jane", "email": "jane@example.com", "login": "janesmith"}
+            return {"name": "Unknown", "email": "unknown@example.com", "login": None}
+
+        with patch.object(client, "get_commit_author", side_effect=mock_get_commit_author):
+            result = await client.get_commits_authors(["abc123", "def456", "ghi789"])
+
+            assert result["abc123"] == "johndoe"
+            assert result["def456"] == "janesmith"
+            assert result["ghi789"] is None
+
+    @pytest.mark.asyncio
+    async def test_get_commits_authors_handles_exceptions(self):
+        """Exceptions for individual commits don't break the batch."""
+        client = GitHubClient(owner="owner", repo="repo", token="test-token")
+
+        async def mock_get_commit_author(sha: str) -> dict[str, str | None]:
+            if sha == "abc123":
+                return {"name": "John", "email": "john@example.com", "login": "johndoe"}
+            if sha == "error":
+                raise ForgeError("Network error")
+            return {"name": "Other", "email": "other@example.com", "login": None}
+
+        with patch.object(client, "get_commit_author", side_effect=mock_get_commit_author):
+            result = await client.get_commits_authors(["abc123", "error", "other"])
+
+            assert result["abc123"] == "johndoe"
+            assert result["error"] is None  # Exception handled gracefully
+            assert result["other"] is None
+
+    @pytest.mark.asyncio
+    async def test_get_commits_authors_empty_list(self):
+        """Empty commit list returns empty dict."""
+        client = GitHubClient(owner="owner", repo="repo", token="test-token")
+
+        result = await client.get_commits_authors([])
+
+        assert result == {}
+
+
 class TestParsePullRequest:
     """Tests for PR response parsing."""
 

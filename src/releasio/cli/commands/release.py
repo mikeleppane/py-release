@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rich.panel import Panel
 
@@ -95,6 +95,11 @@ def run_release(
             "This version may have already been released."
         )
         raise SystemExit(1)
+
+    # Get the previous tag BEFORE creating the new one (for changelog generation)
+    # This is critical: we need to capture this before create_tag() runs
+    tag_pattern = f"{config.version.tag_prefix}*"
+    previous_tag = repo.get_latest_tag(tag_pattern)
 
     if dry_run:
         console.print()
@@ -207,14 +212,14 @@ def run_release(
 
         github = GitHubClient(owner=github_owner, repo=github_repo)
 
-        # Get the previous tag to determine changelog range
-        tag_pattern = f"{config.version.tag_prefix}*"
-        previous_tag = repo.get_latest_tag(tag_pattern)
-
         # Generate changelog content and get contributors
+        # Note: previous_tag was captured earlier, before creating the new tag
         changelog_content = None
         contributors: list[str] = []
         github_usernames: list[str] = []
+        parsed_commits: list[Any] = []
+        sha_to_username: dict[str, str | None] = {}
+        github_url = f"https://github.com/{github_owner}/{github_repo}"
 
         if config.changelog.use_github_prs:
             # PR-based changelog (recommended for large open source projects)
@@ -236,6 +241,42 @@ def run_release(
                 console.print("  [green]✓[/] Fetched PR-based changelog")
             except Exception as e:
                 console.print(f"  [yellow]⚠[/] Could not fetch PRs: {e}")
+        elif config.github.release_body_use_commit_changelog:
+            # Commit-based changelog with PR links and author attribution (FastAPI-style)
+            try:
+                from releasio.core.commits import ParsedCommit
+
+                # Get commits since previous tag
+                commits = repo.get_commits_since_tag(previous_tag)
+                parsed_commits = [
+                    ParsedCommit.from_commit(
+                        c,
+                        breaking_pattern=config.commits.breaking_pattern,
+                        custom_parsers=config.commits.commit_parsers,
+                        use_conventional_fallback=config.commits.use_conventional_fallback,
+                    )
+                    for c in commits
+                ]
+
+                # Resolve GitHub usernames if configured
+                if config.github.release_body_resolve_usernames and parsed_commits:
+                    console.print("  • Resolving GitHub usernames...")
+                    try:
+                        commit_shas = [pc.commit.sha for pc in parsed_commits]
+                        sha_to_username = asyncio.run(github.get_commits_authors(commit_shas))
+                        console.print("  [green]✓[/] Resolved GitHub usernames")
+                    except Exception as e:
+                        console.print(f"  [yellow]⚠[/] Could not resolve usernames: {e}")
+
+                # Extract unique contributor usernames for the Contributors section
+                github_usernames = list({u for u in sha_to_username.values() if u is not None})
+            except Exception as e:
+                console.print(
+                    f"  [yellow]⚠[/] Could not parse commits: {e}\n"
+                    "    Falling back to git-cliff changelog."
+                )
+                # Fall back to git-cliff
+                parsed_commits = []
         else:
             # Commit-based changelog via git-cliff (default)
             try:
@@ -260,13 +301,28 @@ def run_release(
             contributors = repo.get_contributors_since_tag(previous_tag)
             github_usernames = repo.get_contributor_github_usernames(previous_tag)
 
+        # Collect asset filenames for the release body
+        asset_filenames: list[str] = []
+        if config.github.release_assets:
+            for pattern in config.github.release_assets:
+                asset_filenames.extend(p.name for p in project_path.glob(pattern) if p.exists())
+
         # Generate release notes
         release_body = _generate_release_body(
             project_name,
             current_version,
+            parsed_commits=parsed_commits if parsed_commits else None,
+            sha_to_username=sha_to_username if sha_to_username else None,
+            github_url=github_url,
             changelog_content=changelog_content,
             contributors=contributors,
             github_usernames=github_usernames,
+            assets=asset_filenames if asset_filenames else None,
+            show_authors=config.github.release_body_show_authors,
+            include_contributors=config.github.release_body_include_contributors,
+            include_installation=config.github.release_body_include_installation,
+            include_assets=config.github.release_body_include_assets,
+            use_emojis=config.github.release_body_use_emojis,
         )
 
         async def create_release_with_assets() -> tuple[str, list[str]]:
@@ -378,34 +434,73 @@ def run_release(
 def _generate_release_body(
     project_name: str,
     version: Version,
+    parsed_commits: list[Any] | None = None,
+    sha_to_username: dict[str, str | None] | None = None,
+    github_url: str | None = None,
     changelog_content: str | None = None,
     contributors: list[str] | None = None,
     github_usernames: list[str] | None = None,
+    assets: list[str] | None = None,
+    *,
+    show_authors: bool = True,
+    include_contributors: bool = True,
+    include_installation: bool = True,
+    include_assets: bool = True,
+    use_emojis: bool = True,
 ) -> str:
     """Generate a professional GitHub release body.
 
-    Follows the patterns used by major projects like FastAPI and Ruff:
-    - Actual changelog content (categorized changes)
-    - Contributors section with GitHub usernames
+    Creates a well-formatted release page with:
+    - Version header with date
+    - Changes grouped by type (Features, Bug Fixes, etc.)
+    - Author attribution with GitHub profile links
+    - Contributors section
     - Installation instructions
+    - Assets list (if provided)
 
     Args:
         project_name: Name of the project
         version: Version being released
-        changelog_content: Generated changelog content (from git-cliff or fallback)
+        parsed_commits: List of ParsedCommit instances for structured changelog
+        sha_to_username: Mapping of commit SHA to GitHub username
+        github_url: Base GitHub URL for links
+        changelog_content: Fallback changelog content (if parsed_commits not available)
         contributors: List of contributor names
-        github_usernames: List of GitHub usernames (linked in the release)
+        github_usernames: List of GitHub usernames
+        assets: List of asset filenames
+        show_authors: Whether to show author attribution
+        include_contributors: Whether to include contributors section
+        include_installation: Whether to include installation instructions
+        include_assets: Whether to include assets section
+        use_emojis: Whether to use emojis in section headers
 
     Returns:
         Formatted release body markdown
     """
+    from datetime import UTC, datetime
+
     lines: list[str] = []
 
-    # Add changelog content if available
-    if changelog_content:
-        # Remove the version header if git-cliff added one (we'll use GitHub's title)
+    # Version header with date
+    today = datetime.now(tz=UTC).strftime("%Y-%m-%d")
+    lines.append(f"## [{version}] - {today}")
+    lines.append("")
+
+    # If we have parsed commits, generate structured changelog like release PR
+    if parsed_commits:
+        lines.extend(
+            _generate_changelog_from_commits(
+                parsed_commits,
+                sha_to_username or {},
+                github_url,
+                show_authors=show_authors,
+                use_emojis=use_emojis,
+            )
+        )
+    elif changelog_content:
+        # Fallback to provided changelog content
         content = changelog_content.strip()
-        # Remove leading "## [version]" or "# [version]" lines
+        # Remove leading version headers (we already added one)
         import re
 
         content = re.sub(r"^#+\s*\[?v?\d+\.\d+\.\d+.*?\]?.*?\n+", "", content, flags=re.MULTILINE)
@@ -413,34 +508,41 @@ def _generate_release_body(
             lines.append(content)
             lines.append("")
 
-    # Add contributors section (Ruff-style)
-    if github_usernames:
-        lines.append("## Contributors")
+    # Contributors section
+    if include_contributors:
+        if github_usernames:
+            lines.append("## Contributors")
+            lines.append("")
+            username_links = [f"[@{u}](https://github.com/{u})" for u in github_usernames]
+            lines.append(" • ".join(username_links))
+            lines.append("")
+        elif contributors:
+            lines.append("## Contributors")
+            lines.append("")
+            lines.append(", ".join(contributors))
+            lines.append("")
+
+    # Assets section (if any)
+    if include_assets and assets:
+        lines.append("## Assets")
         lines.append("")
-        # Format as linked usernames
-        username_links = [f"[@{u}](https://github.com/{u})" for u in github_usernames]
-        lines.append(" • ".join(username_links))
-        lines.append("")
-    elif contributors:
-        # Fallback to names if no GitHub usernames available
-        lines.append("## Contributors")
-        lines.append("")
-        lines.append(", ".join(contributors))
+        lines.extend(f"- `{asset}`" for asset in assets)
         lines.append("")
 
-    # Add installation section
-    lines.append("## Installation")
-    lines.append("")
-    lines.append("```bash")
-    lines.append(f"pip install {project_name}=={version}")
-    lines.append("```")
-    lines.append("")
-    lines.append("Or with uv:")
-    lines.append("")
-    lines.append("```bash")
-    lines.append(f"uv add {project_name}=={version}")
-    lines.append("```")
-    lines.append("")
+    # Installation section
+    if include_installation:
+        lines.append("## Installation")
+        lines.append("")
+        lines.append("```bash")
+        lines.append(f"pip install {project_name}=={version}")
+        lines.append("```")
+        lines.append("")
+        lines.append("Or with uv:")
+        lines.append("")
+        lines.append("```bash")
+        lines.append(f"uv add {project_name}=={version}")
+        lines.append("```")
+        lines.append("")
 
     # Footer
     lines.append("---")
@@ -448,3 +550,154 @@ def _generate_release_body(
     lines.append("_Released with [releasio](https://github.com/mikeleppane/release-py)_")
 
     return "\n".join(lines)
+
+
+def _generate_changelog_from_commits(
+    parsed_commits: list[Any],
+    sha_to_username: dict[str, str | None],
+    github_url: str | None,
+    *,
+    show_authors: bool = True,
+    use_emojis: bool = True,
+) -> list[str]:
+    """Generate changelog lines from parsed commits (FastAPI-style).
+
+    Args:
+        parsed_commits: List of ParsedCommit instances
+        sha_to_username: Mapping of commit SHA to GitHub username
+        github_url: Base GitHub URL for links
+        show_authors: Whether to show author attribution
+        use_emojis: Whether to use emojis in section headers
+
+    Returns:
+        List of markdown lines for the changelog section
+    """
+    import re
+
+    lines: list[str] = []
+
+    # Group commits by type
+    by_type: dict[str, list[Any]] = {}
+    breaking: list[Any] = []
+
+    for pc in parsed_commits:
+        if pc.is_breaking:
+            breaking.append(pc)
+        commit_type = pc.commit_type or "other"
+        by_type.setdefault(commit_type, []).append(pc)
+
+    # Type labels with and without emojis
+    type_labels_with_emoji = {
+        "feat": "✨ Features",
+        "fix": "🐛 Bug Fixes",
+        "perf": "⚡ Performance",
+        "docs": "📝 Docs",
+        "refactor": "♻️ Refactors",
+        "test": "🧪 Tests",
+        "build": "📦 Build",
+        "ci": "👷 Internal",
+        "style": "💄 Style",
+        "chore": "🔧 Chores",
+        "other": "📋 Other",
+    }
+    type_labels_plain = {
+        "feat": "Features",
+        "fix": "Bug Fixes",
+        "perf": "Performance",
+        "docs": "Documentation",
+        "refactor": "Refactors",
+        "test": "Tests",
+        "build": "Build",
+        "ci": "Internal",
+        "style": "Style",
+        "chore": "Chores",
+        "other": "Other",
+    }
+    type_labels = type_labels_with_emoji if use_emojis else type_labels_plain
+
+    # Pattern to extract PR number from description
+    pr_pattern = re.compile(r"\(#(\d+)\)\s*$")
+
+    def format_entry(pc: Any) -> str:
+        """Format a single commit entry (FastAPI-style).
+
+        Format: description. PR #123 by @username.
+        """
+        parts = []
+
+        # Add scope if present (bold)
+        if pc.scope:
+            parts.append(f"**{pc.scope}**: ")
+
+        # Extract PR number and clean description
+        description = pc.description
+        pr_match = pr_pattern.search(description)
+        pr_number = None
+        if pr_match:
+            pr_number = int(pr_match.group(1))
+            description = pr_pattern.sub("", description).strip()
+
+        # Capitalize first letter
+        if description:
+            description = description[0].upper() + description[1:]
+
+        parts.append(description)
+
+        # Add PR/commit link and optionally author
+        if show_authors:
+            # Format author link (FastAPI-style: @username as link)
+            github_username = sha_to_username.get(pc.commit.sha)
+            if github_username:
+                author_link = f"[@{github_username}](https://github.com/{github_username})"
+            else:
+                author_link = pc.commit.author_name
+
+            if pr_number and github_url:
+                pr_url = f"{github_url}/pull/{pr_number}"
+                parts.append(f". PR [#{pr_number}]({pr_url}) by {author_link}.")
+            elif pr_number:
+                parts.append(f". PR #{pr_number} by {author_link}.")
+            else:
+                short_sha = pc.commit.short_sha
+                if github_url:
+                    commit_url = f"{github_url}/commit/{pc.commit.sha}"
+                    parts.append(f". Commit [{short_sha}]({commit_url}) by {author_link}.")
+                else:
+                    parts.append(f". Commit {short_sha} by {author_link}.")
+        elif pr_number and github_url:
+            # No author, just PR/commit link
+            pr_url = f"{github_url}/pull/{pr_number}"
+            parts.append(f". PR [#{pr_number}]({pr_url}).")
+        elif pr_number:
+            parts.append(f". PR #{pr_number}.")
+        else:
+            short_sha = pc.commit.short_sha
+            if github_url:
+                commit_url = f"{github_url}/commit/{pc.commit.sha}"
+                parts.append(f". Commit [{short_sha}]({commit_url}).")
+            else:
+                parts.append(f". Commit {short_sha}.")
+
+        return "".join(parts)
+
+    # Breaking changes first (highlighted section)
+    if breaking:
+        breaking_label = "⚠️ Breaking Changes" if use_emojis else "Breaking Changes"
+        lines.append(f"### {breaking_label}")
+        lines.append("")
+        lines.extend(f"* {format_entry(pc)}" for pc in breaking)
+        lines.append("")
+
+    # Other changes by type
+    for commit_type, label in type_labels.items():
+        commits_of_type = by_type.get(commit_type, [])
+        # Filter out breaking (already listed)
+        commits_of_type = [c for c in commits_of_type if not c.is_breaking]
+
+        if commits_of_type:
+            lines.append(f"### {label}")
+            lines.append("")
+            lines.extend(f"* {format_entry(pc)}" for pc in commits_of_type)
+            lines.append("")
+
+    return lines

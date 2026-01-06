@@ -587,6 +587,65 @@ class GitHubClient:
             "url": data["html_url"],
         }
 
+    async def get_commit_author(self, commit_sha: str) -> dict[str, str | None]:
+        """Get commit author information from GitHub.
+
+        Fetches commit data from GitHub API to get the author's GitHub username
+        if their email is linked to a GitHub account.
+
+        Args:
+            commit_sha: The commit SHA to look up.
+
+        Returns:
+            Dict with 'name' (git author name), 'email' (git author email),
+            and 'login' (GitHub username or None if not linked).
+        """
+        path = f"/repos/{self.owner}/{self.repo}/commits/{commit_sha}"
+        try:
+            data = await self._request("GET", path)
+        except ForgeError:
+            return {"name": None, "email": None, "login": None}
+
+        if not data:
+            return {"name": None, "email": None, "login": None}
+
+        # Get GitHub username if the commit is linked to a GitHub account
+        github_login = None
+        if data.get("author"):
+            github_login = data["author"].get("login")
+
+        # Get git commit author info
+        commit_author = data.get("commit", {}).get("author", {})
+
+        return {
+            "name": commit_author.get("name"),
+            "email": commit_author.get("email"),
+            "login": github_login,
+        }
+
+    async def get_commits_authors(self, commit_shas: list[str]) -> dict[str, str | None]:
+        """Get GitHub usernames for multiple commits.
+
+        Fetches author information for multiple commits in parallel.
+
+        Args:
+            commit_shas: List of commit SHAs to look up.
+
+        Returns:
+            Dict mapping commit SHA to GitHub username (or None if not linked).
+        """
+        tasks = [self.get_commit_author(sha) for sha in commit_shas]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        sha_to_login: dict[str, str | None] = {}
+        for sha, result in zip(commit_shas, results, strict=False):
+            if isinstance(result, BaseException):
+                sha_to_login[sha] = None
+            else:
+                sha_to_login[sha] = result.get("login")
+
+        return sha_to_login
+
     async def get_pr_for_commit(self, commit_sha: str) -> dict[str, Any] | None:
         """Get the PR associated with a commit.
 

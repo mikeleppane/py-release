@@ -333,6 +333,38 @@ class GitHubConfig(BaseModel):
             "Example: ['dist/*.whl', 'dist/*.tar.gz', 'docs/build/html.zip']"
         ),
     )
+    # Release body customization
+    release_body_show_authors: bool = Field(
+        default=True,
+        description="Show author attribution in release notes (PR/commit by @author)",
+    )
+    release_body_resolve_usernames: bool = Field(
+        default=True,
+        description="Resolve GitHub usernames from commit authors via API",
+    )
+    release_body_include_contributors: bool = Field(
+        default=True,
+        description="Include contributors section in release notes",
+    )
+    release_body_include_installation: bool = Field(
+        default=True,
+        description="Include installation instructions in release notes",
+    )
+    release_body_include_assets: bool = Field(
+        default=True,
+        description="Include assets section in release notes (if assets configured)",
+    )
+    release_body_use_emojis: bool = Field(
+        default=True,
+        description="Use emojis in section headers (e.g., ✨ Features, 🐛 Bug Fixes)",
+    )
+    release_body_use_commit_changelog: bool = Field(
+        default=True,
+        description=(
+            "Generate changelog from commits with PR links and author attribution. "
+            "If False, uses git-cliff or PR-based changelog."
+        ),
+    )
 
     model_config = {"extra": "forbid"}
 

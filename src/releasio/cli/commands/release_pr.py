@@ -146,10 +146,32 @@ def run_release_pr(
         github_owner = None
         github_repo = None
 
+    # Try to fetch GitHub usernames for commit authors
+    sha_to_username: dict[str, str | None] = {}
+    if github_owner and github_repo:
+        try:
+            from releasio.forge.github import GitHubClient
+
+            github = GitHubClient(owner=github_owner, repo=github_repo)
+            commit_shas = [pc.commit.sha for pc in parsed]
+
+            import asyncio
+
+            sha_to_username = asyncio.run(github.get_commits_authors(commit_shas))
+        except Exception:
+            # If we can't fetch usernames, continue without them
+            pass
+
     # Generate PR title and body
     pr_title = f"chore(release): prepare {project_name} v{next_version}"
     pr_body = _generate_pr_body(
-        project_name, current_version, next_version, parsed, is_first_release, github_url
+        project_name,
+        current_version,
+        next_version,
+        parsed,
+        is_first_release,
+        github_url,
+        sha_to_username=sha_to_username,
     )
 
     if dry_run:
@@ -377,6 +399,7 @@ def _format_commit_entry(
     pc: Any,
     github_url: str | None = None,
     include_type_emoji: bool = False,
+    github_username: str | None = None,
 ) -> str:
     """Format a single commit entry for the PR body.
 
@@ -384,13 +407,17 @@ def _format_commit_entry(
         pc: ParsedCommit instance
         github_url: Base GitHub URL (e.g., "https://github.com/owner/repo")
         include_type_emoji: Whether to prefix with type emoji (for flat lists)
+        github_username: GitHub username for the commit author (if resolved)
 
     Returns:
         Formatted commit entry string
 
-    Example output:
+    Example output (with GitHub username):
+        ✨ add new feature. PR #123 by John Doe (@johndoe).
+        🐛 **api:** fix null response. PR #456 by Jane Smith (@janesmith).
+
+    Example output (without GitHub username):
         ✨ add new feature. PR #123 by John Doe.
-        🐛 **api:** fix null response. PR #456 by Jane Smith.
     """
     # Type emoji mapping
     type_emojis = {
@@ -422,23 +449,24 @@ def _format_commit_entry(
     parts.append(description)
 
     # Add PR link and author
-    # Use the git author name without @ prefix to avoid incorrectly mentioning
-    # unrelated GitHub users (git author names are not GitHub usernames)
-    author = pc.commit.author_name
+    # If we have the GitHub username, show "by Full Name (@username)"
+    # Otherwise just show "by Full Name"
+    author_name = pc.commit.author_name
+    author_display = f"{author_name} (@{github_username})" if github_username else author_name
 
     if pr_number and github_url:
         pr_url = f"{github_url}/pull/{pr_number}"
-        parts.append(f". PR [#{pr_number}]({pr_url}) by {author}.")
+        parts.append(f". PR [#{pr_number}]({pr_url}) by {author_display}.")
     elif pr_number:
-        parts.append(f". PR #{pr_number} by {author}.")
+        parts.append(f". PR #{pr_number} by {author_display}.")
     else:
         # No PR number - just add commit link and author
         short_sha = pc.commit.short_sha
         if github_url:
             commit_url = f"{github_url}/commit/{pc.commit.sha}"
-            parts.append(f". Commit [{short_sha}]({commit_url}) by {author}.")
+            parts.append(f". Commit [{short_sha}]({commit_url}) by {author_display}.")
         else:
-            parts.append(f". Commit {short_sha} by {author}.")
+            parts.append(f". Commit {short_sha} by {author_display}.")
 
     return "".join(parts)
 
@@ -450,6 +478,7 @@ def _generate_pr_body(
     parsed_commits: list[Any],
     is_first_release: bool = False,
     github_url: str | None = None,
+    sha_to_username: dict[str, str | None] | None = None,
 ) -> str:
     """Generate the pull request body with changelog preview.
 
@@ -466,6 +495,7 @@ def _generate_pr_body(
         parsed_commits: List of ParsedCommit instances
         is_first_release: Whether this is the first release
         github_url: Base GitHub URL for links (e.g., "https://github.com/owner/repo")
+        sha_to_username: Optional mapping of commit SHA to GitHub username
     """
     from releasio.core.commits import ParsedCommit
 
@@ -522,12 +552,16 @@ def _generate_pr_body(
         "other": "📝 Other",
     }
 
+    # Helper to get GitHub username for a commit
+    username_map = sha_to_username or {}
+
     # Breaking changes first
     if breaking:
         lines.append("### ⚠️ Breaking Changes")
         lines.append("")
         for pc in breaking:
-            entry = _format_commit_entry(pc, github_url)
+            github_username = username_map.get(pc.commit.sha)
+            entry = _format_commit_entry(pc, github_url, github_username=github_username)
             lines.append(f"- {entry}")
         lines.append("")
 
@@ -541,7 +575,8 @@ def _generate_pr_body(
             lines.append(f"### {label}")
             lines.append("")
             for pc in commits_of_type:
-                entry = _format_commit_entry(pc, github_url)
+                github_username = username_map.get(pc.commit.sha)
+                entry = _format_commit_entry(pc, github_url, github_username=github_username)
                 lines.append(f"- {entry}")
             lines.append("")
 
